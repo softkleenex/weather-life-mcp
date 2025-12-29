@@ -1,8 +1,15 @@
 """
-Weather Life MCP 서버 v3.5
+Weather Life MCP 서버 v3.6
 날씨 + 미세먼지 + 생활 도우미 + 한국 특화 + 건강 + 지도 MCP
 
 PlayMCP 공모전 (MCP Player 10) 출품작
+
+v3.6 신규 기능 (실용성 기반 최적화):
+- 저사용 도구 제거로 32개 → 28개 최적화
+- 김장지수 제거 (11-12월만 사용)
+- 러닝지수 제거 (운동지수로 대체)
+- 바베큐지수 제거 (피크닉지수로 대체)
+- 드라이브지수 제거 (외출적합도로 대체)
 
 v3.5 신규 기능 (도구 통합 최적화):
 - 중복 도구 제거로 38개 → 32개 최적화
@@ -772,36 +779,7 @@ async def is_good_for_car_wash(location: str = "서울") -> dict:
     return result
 
 
-@mcp.tool()
-async def get_kimjang_timing(location: str = "서울") -> dict:
-    """
-    김장하기 좋은 날인지 판단합니다. (김장지수)
-    11-12월 한정 서비스로, 기온과 강수확률을 고려하여 김장 적기를 알려줍니다.
-    세계에서 유일한 김장지수! 한국 전통문화를 반영했습니다.
-
-    사용 예시: "김장 언제 해?", "김장하기 좋은 날이야?", "김치 담그기 좋아?"
-
-    Args:
-        location: 지역명
-
-    Returns:
-        김장지수 (0-100), 등급, 김장 팁
-    """
-    weather_data = await _get_weather_data(location)
-
-    # 최저/최고 기온 추가
-    forecast = await cached_get_forecast(location)
-    if "error" not in forecast:
-        summary = forecast.get("today_summary", {})
-        weather_data.temp_min = summary.get("min_temperature")
-        weather_data.temp_max = summary.get("max_temperature")
-
-    result = calculate_kimjang_index(weather_data)
-    result["location"] = location
-    # API 명세와 일치시키기 위해 score -> kimjang_score
-    if "score" in result:
-        result["kimjang_score"] = result.pop("score")
-    return result
+# 김장지수 제거됨 - 11-12월만 사용 가능하여 실용성 낮음 (v3.5)
 
 
 @mcp.tool()
@@ -1115,64 +1093,7 @@ async def get_joint_pain_risk(location: str = "서울") -> dict:
 # =============================================================================
 
 
-@mcp.tool()
-async def get_drive_index(location: str = "서울") -> dict:
-    """
-    드라이브/도로여행 적합도를 분석합니다. 강수, 시야, 바람, 노면 상태를 고려합니다.
-    장거리 운전, 드라이브 코스, 도로 여행 계획 시 활용하세요!
-
-    사용 예시: "드라이브 가기 좋아?", "오늘 운전하기 어때?", "도로 상황 어때?"
-
-    Args:
-        location: 지역명
-
-    Returns:
-        드라이브지수 (0-100), 등급, 도로 조건, 안전 팁
-    """
-    # 날씨 데이터 수집
-    weather = await cached_get_weather(location)
-    forecast = await cached_get_forecast(location)
-    air = await cached_get_air_quality(location)
-
-    # weather_data dict 구성
-    weather_data = {
-        "sky": "맑음",
-        "temp_current": 20,
-        "humidity": 50,
-        "rain_prob": 0,
-        "wind_speed": 2.0
-    }
-
-    if "error" not in weather:
-        current = weather.get("current", {})
-        weather_data["temp_current"] = current.get("temperature", 20)
-        weather_data["humidity"] = current.get("humidity", 50)
-        weather_data["wind_speed"] = current.get("wind_speed", 2.0)
-
-    if "error" not in forecast:
-        summary = forecast.get("today_summary", {})
-        weather_data["rain_prob"] = summary.get("precipitation_probability", 0)
-        weather_data["sky"] = summary.get("sky", "맑음")
-
-    # air_data dict 구성
-    air_data = {
-        "pm10_grade": "보통",
-        "pm25_grade": "보통"
-    }
-
-    if "error" not in air:
-        pm10_data = air.get("pm10") or air.get("average", {}).get("pm10", {})
-        pm25_data = air.get("pm25") or air.get("average", {}).get("pm25", {})
-        if isinstance(pm10_data, dict):
-            air_data["pm10_grade"] = pm10_data.get("grade", "보통")
-        if isinstance(pm25_data, dict):
-            air_data["pm25_grade"] = pm25_data.get("grade", "보통")
-
-    result = calculate_drive_index(weather_data, air_data)
-    result["location"] = location
-    if "score" in result:
-        result["drive_score"] = result.pop("score")
-    return result
+# 드라이브지수 제거됨 - should_i_go_out(외출적합도)로 대체 (v3.6)
 
 
 @mcp.tool()
@@ -1329,102 +1250,10 @@ async def get_golf_index(location: str = "서울") -> dict:
     return result
 
 
-@mcp.tool()
-async def get_running_index(location: str = "서울") -> dict:
-    """
-    야외 러닝/조깅 적합도를 분석합니다. 기온, 습도, 미세먼지, 자외선을 고려합니다.
-    마라톤 훈련, 조깅, 야외 달리기 계획 시 활용하세요!
-
-    사용 예시: "러닝 가기 좋아?", "조깅 괜찮아?", "달리기 하기 좋은 날이야?"
-
-    Args:
-        location: 지역명
-
-    Returns:
-        러닝지수 (0-100), 등급, 날씨 조건, 최적 시간대, 건강 팁
-    """
-    # 날씨 데이터 수집
-    weather = await cached_get_weather(location)
-    forecast = await cached_get_forecast(location)
-    air = await cached_get_air_quality(location)
-
-    # weather_data dict 구성
-    weather_data = {
-        "temp_current": 20,
-        "humidity": 50,
-        "rain_prob": 0,
-        "uv_index": 5
-    }
-
-    if "error" not in weather:
-        current = weather.get("current", {})
-        weather_data["temp_current"] = current.get("temperature", 20)
-        weather_data["humidity"] = current.get("humidity", 50)
-
-    if "error" not in forecast:
-        summary = forecast.get("today_summary", {})
-        weather_data["rain_prob"] = summary.get("precipitation_probability", 0)
-
-    # air_data dict 구성
-    air_data = {
-        "pm25_grade": "보통",
-        "pm25_value": 25
-    }
-
-    if "error" not in air:
-        pm25_data = air.get("pm25") or air.get("average", {}).get("pm25", {})
-        if isinstance(pm25_data, dict):
-            air_data["pm25_grade"] = pm25_data.get("grade", "보통")
-            air_data["pm25_value"] = pm25_data.get("value", 25)
-
-    result = calculate_running_index(weather_data, air_data)
-    result["location"] = location
-    if "score" in result:
-        result["running_score"] = result.pop("score")
-    return result
+# 러닝지수 제거됨 - is_good_for_exercise로 대체 (v3.6)
 
 
-@mcp.tool()
-async def get_bbq_index(location: str = "서울") -> dict:
-    """
-    야외 바베큐/그릴링 적합도를 분석합니다. 바람, 비, 기온을 고려합니다.
-    캠핑 바베큐, 정원 파티, 루프탑 그릴 계획 시 활용하세요!
-
-    사용 예시: "바베큐 하기 좋아?", "고기 구워도 돼?", "야외 그릴 날씨 어때?"
-
-    Args:
-        location: 지역명
-
-    Returns:
-        바베큐지수 (0-100), 등급, 날씨 조건, 안전 팁
-    """
-    # 날씨 데이터 수집
-    weather = await cached_get_weather(location)
-    forecast = await cached_get_forecast(location)
-
-    # weather_data dict 구성
-    weather_data = {
-        "sky": "맑음",
-        "temp_current": 20,
-        "rain_prob": 0,
-        "wind_speed": 2.0
-    }
-
-    if "error" not in weather:
-        current = weather.get("current", {})
-        weather_data["temp_current"] = current.get("temperature", 20)
-        weather_data["wind_speed"] = current.get("wind_speed", 2.0)
-
-    if "error" not in forecast:
-        summary = forecast.get("today_summary", {})
-        weather_data["rain_prob"] = summary.get("precipitation_probability", 0)
-        weather_data["sky"] = summary.get("sky", "맑음")
-
-    result = calculate_bbq_index(weather_data)
-    result["location"] = location
-    if "score" in result:
-        result["bbq_score"] = result.pop("score")
-    return result
+# 바베큐지수 제거됨 - is_good_for_picnic으로 대체 (v3.6)
 
 
 # what_should_i_do_today 제거됨 - get_smart_course 또는 개별 활동지수 사용 권장 (v3.4)
@@ -1908,9 +1737,10 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "weather-life-mcp",
-        "version": "3.5.0",
-        "tools": 32,
-        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant", "get_place_recommendation", "get_smart_course"],
+        "version": "3.6.0",
+        "tools": 28,
+        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "laundry", "hiking", "picnic", "car_wash", "exercise", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "camping", "fishing", "golf", "uv_info", "food_safety", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant", "get_place_recommendation", "get_smart_course"],
+        "v3.6_features": ["removed_kimjang", "removed_running", "removed_bbq", "removed_drive", "tool_optimization_32_to_28"],
         "v3.5_features": ["tool_consolidation_38_to_32", "removed_duplicates"],
         "v3.4_features": ["place_info_enriched", "why_recommend", "how_to_get_there", "notice", "hours_info", "outfit_tpo", "outfit_colors"],
         "v3.3_features": ["weather_based_course", "get_smart_course", "kakao_map_url_highlight"],
