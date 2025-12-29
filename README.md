@@ -1,14 +1,14 @@
-# Weather Life MCP v3.2
+# Weather Life MCP v3.3
 
 <div align="center">
 
 ![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-blue?style=for-the-badge)
 ![Railway](https://img.shields.io/badge/Railway-Deployed-success?style=for-the-badge&logo=railway)
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Tools](https://img.shields.io/badge/Tools-36개-orange?style=for-the-badge)
+![Tools](https://img.shields.io/badge/Tools-38개-orange?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-### **"홍대에서 데이트 뭐하지?" 한 마디로 끝!**
+### **날씨 연동 코스 추천 + 하루 일정 자동 계획!**
 
 날씨 + 미세먼지 + **카카오맵 연동** + **상황별 추천** + **전국 지원** MCP 서버
 
