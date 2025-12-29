@@ -34,6 +34,53 @@ def calculate_distance_between_coords(lat1: float, lon1: float, lat2: float, lon
 
     return int(R * c)
 
+
+async def find_nearest_subway(x: str, y: str) -> Optional[Dict]:
+    """
+    주어진 좌표에서 가장 가까운 지하철역 찾기
+
+    Args:
+        x: 경도 (longitude)
+        y: 위도 (latitude)
+
+    Returns:
+        가장 가까운 지하철역 정보 또는 None
+    """
+    if not KAKAO_REST_API_KEY:
+        return None
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{KAKAO_LOCAL_API}/search/category.json",
+                headers={"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"},
+                params={
+                    "category_group_code": "SW8",  # 지하철역
+                    "x": x,
+                    "y": y,
+                    "radius": 2000,  # 2km 반경
+                    "sort": "distance",
+                    "size": 1
+                },
+                timeout=5.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                documents = data.get("documents", [])
+                if documents:
+                    station = documents[0]
+                    return {
+                        "name": station.get("place_name", "").replace("역", "") + "역",
+                        "distance": station.get("distance", ""),
+                        "x": station.get("x"),
+                        "y": station.get("y")
+                    }
+    except Exception:
+        pass
+
+    return None
+
 # API 키
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
 
@@ -766,7 +813,8 @@ def enrich_place_info(
     time_of_day: str = "오후",
     step_num: int = 1,
     prev_place: Optional[Dict] = None,
-    is_course: bool = False
+    is_course: bool = False,
+    nearest_subway: Optional[Dict] = None
 ) -> Dict:
     """
     장소 정보에 추천 이유, 이동 방법, 알아야 할 것 추가
@@ -778,6 +826,7 @@ def enrich_place_info(
         step_num: 코스에서의 순서
         prev_place: 이전 장소 (코스일 때만)
         is_course: 코스 추천인지 여부
+        nearest_subway: 가장 가까운 지하철역 정보
 
     Returns:
         강화된 장소 정보
@@ -804,9 +853,8 @@ def enrich_place_info(
         "tip": notice_info["tip"],
     }
 
-    # 코스일 때만 이동 정보 표시
+    # 코스일 때: 이전 장소에서의 거리
     if is_course and prev_place:
-        # 이전 장소 → 현재 장소 거리 계산
         try:
             prev_lat = float(prev_place.get("y", 0))
             prev_lon = float(prev_place.get("x", 0))
@@ -819,6 +867,18 @@ def enrich_place_info(
                 result["from_prev_place"] = f"{prev_name}에서"
                 result["distance_from_prev"] = f"{dist}m"
                 result["travel_tip"] = generate_travel_tip(str(dist))
+        except (ValueError, TypeError):
+            pass
+
+    # 단일 검색일 때: 가까운 지하철역에서의 거리
+    elif not is_course and nearest_subway:
+        try:
+            station_name = nearest_subway.get("name", "")
+            station_dist = nearest_subway.get("distance", "")
+            if station_name and station_dist:
+                result["nearest_station"] = station_name
+                result["distance_from_station"] = f"{station_dist}m"
+                result["travel_tip"] = generate_travel_tip(station_dist)
         except (ValueError, TypeError):
             pass
 
@@ -897,10 +957,17 @@ async def get_smart_recommendation(
     if "error" in result:
         return result
 
-    # 장소에 강화된 정보 추가 (v3.4)
+    # 장소에 강화된 정보 추가 (v3.4) + 지하철역 정보 (v3.6)
     places_with_links = []
     for i, place in enumerate(result.get("places", []), 1):
-        enriched = enrich_place_info(place, situation, time_of_day, i)
+        # 가장 가까운 지하철역 찾기
+        place_x = place.get("x", "")
+        place_y = place.get("y", "")
+        nearest_subway = None
+        if place_x and place_y:
+            nearest_subway = await find_nearest_subway(place_x, place_y)
+
+        enriched = enrich_place_info(place, situation, time_of_day, i, nearest_subway=nearest_subway)
         places_with_links.append(enriched)
 
     # 결과 구성
