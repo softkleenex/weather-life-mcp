@@ -590,6 +590,204 @@ def get_korea_time():
     return datetime.now(KST)
 
 
+# =============================================================================
+# 장소 정보 강화 함수들 (v3.4)
+# =============================================================================
+
+def generate_recommendation_reason(category: str, situation: str, time_of_day: str) -> str:
+    """
+    추천 이유 생성
+
+    Args:
+        category: 장소 카테고리 (카페, 음식점 등)
+        situation: 상황 (혼자, 친구, 데이트 등)
+        time_of_day: 시간대 (아침, 점심, 오후, 저녁, 심야)
+
+    Returns:
+        추천 이유 문장
+    """
+    reasons = {
+        # 상황별 이유
+        ("데이트", "카페"): "분위기 좋은 공간에서 대화하기 좋아요",
+        ("데이트", "음식점"): "특별한 날 기억에 남을 식사를 해보세요",
+        ("데이트", "레스토랑"): "로맨틱한 분위기에서 둘만의 시간을",
+        ("친구", "카페"): "수다 떨기 좋은 분위기예요",
+        ("친구", "음식점"): "맛있는 음식과 함께 즐거운 시간!",
+        ("친구", "술집"): "오랜만에 속 터놓고 이야기해요",
+        ("혼자", "카페"): "조용히 나만의 시간을 즐기세요",
+        ("혼자", "음식점"): "혼밥하기 편한 곳이에요",
+        ("혼자", "서점"): "책과 함께 여유로운 시간",
+        ("가족", "음식점"): "온 가족이 함께 즐길 수 있어요",
+        ("가족", "카페"): "아이들도 좋아하는 공간이에요",
+
+        # 시간대별 이유
+        ("아침", "카페"): "상쾌한 아침을 깨워줄 커피 한 잔",
+        ("아침", "음식점"): "든든한 아침으로 하루 시작!",
+        ("점심", "음식점"): "점심 특선 메뉴가 있어요",
+        ("점심", "카페"): "식후 디저트로 딱!",
+        ("오후", "카페"): "여유로운 오후 티타임",
+        ("오후", "전시"): "문화생활 하기 좋은 시간이에요",
+        ("저녁", "음식점"): "분위기 있는 저녁 식사",
+        ("저녁", "레스토랑"): "특별한 저녁을 위한 추천",
+        ("심야", "음식점"): "야식 맛집! 늦은 시간도 OK",
+        ("심야", "술집"): "밤의 분위기를 즐기세요",
+    }
+
+    # 상황+카테고리 조합으로 찾기
+    for key_cat in ["카페", "음식점", "레스토랑", "술집", "서점", "전시"]:
+        if key_cat in category:
+            key = (situation, key_cat)
+            if key in reasons:
+                return reasons[key]
+            # 시간대로도 찾기
+            key = (time_of_day, key_cat)
+            if key in reasons:
+                return reasons[key]
+
+    # 기본 이유
+    defaults = {
+        "데이트": "데이트하기 좋은 분위기예요",
+        "친구": "친구들과 즐기기 좋아요",
+        "혼자": "혼자 방문하기 편해요",
+        "가족": "가족 단위로 방문하기 좋아요",
+        "비즈니스": "미팅하기 좋은 환경이에요",
+    }
+    return defaults.get(situation, "인기 있는 장소예요")
+
+
+def generate_travel_tip(distance: str) -> str:
+    """
+    거리 기반 이동 방법 힌트 생성
+
+    Args:
+        distance: 거리 문자열 (예: "350", "1200")
+
+    Returns:
+        이동 방법 힌트
+    """
+    try:
+        dist = int(distance) if distance else 0
+    except (ValueError, TypeError):
+        return "카카오맵에서 길찾기를 확인하세요"
+
+    if dist <= 300:
+        return "도보 5분 이내, 걸어가기 좋아요"
+    elif dist <= 500:
+        return "도보 5-10분, 산책하며 가기 좋아요"
+    elif dist <= 1000:
+        return "도보 10-15분 또는 버스 1정거장"
+    elif dist <= 2000:
+        return "버스/지하철 이용 추천 (약 10분)"
+    elif dist <= 5000:
+        return "대중교통 15-20분 소요"
+    else:
+        return "택시 또는 대중교통 이용 추천"
+
+
+def generate_notice(category: str) -> Dict[str, str]:
+    """
+    카테고리별 알아야 할 것 생성
+
+    Args:
+        category: 장소 카테고리
+
+    Returns:
+        주의사항 딕셔너리
+    """
+    notices = {
+        "카페": {
+            "notice": "음료 주문 필수, 노트북 사용 가능 여부 확인",
+            "tip": "피크타임(14-17시)엔 웨이팅 있을 수 있어요",
+        },
+        "음식점": {
+            "notice": "예약 가능 여부 미리 확인 추천",
+            "tip": "점심(12-13시), 저녁(18-19시)은 대기 시간 있을 수 있어요",
+        },
+        "레스토랑": {
+            "notice": "예약 필수! 드레스코드 확인",
+            "tip": "기념일엔 미리 말씀하시면 이벤트 가능할 수 있어요",
+        },
+        "술집": {
+            "notice": "미성년자 출입 불가",
+            "tip": "금요일/토요일은 매우 붐벼요",
+        },
+        "영화관": {
+            "notice": "상영 시간표 미리 확인",
+            "tip": "팝콘&음료 세트가 더 저렴해요",
+        },
+        "전시": {
+            "notice": "온라인 예매 시 할인 있는 경우 많아요",
+            "tip": "평일 오전이 가장 한적해요",
+        },
+        "공원": {
+            "notice": "날씨 변화에 대비하세요",
+            "tip": "돗자리, 간식 챙기면 더 좋아요",
+        },
+        "쇼핑": {
+            "notice": "주말은 매우 붐빕니다",
+            "tip": "세일 기간 확인하고 방문하세요",
+        },
+    }
+
+    for key, value in notices.items():
+        if key in category:
+            return value
+
+    return {
+        "notice": "운영시간 확인 후 방문하세요",
+        "tip": "카카오맵에서 최신 정보를 확인하세요",
+    }
+
+
+def enrich_place_info(
+    place: Dict,
+    situation: str = "혼자",
+    time_of_day: str = "오후",
+    step_num: int = 1
+) -> Dict:
+    """
+    장소 정보에 추천 이유, 이동 방법, 알아야 할 것 추가
+
+    Args:
+        place: 기본 장소 정보
+        situation: 상황
+        time_of_day: 시간대
+        step_num: 코스에서의 순서
+
+    Returns:
+        강화된 장소 정보
+    """
+    category = place.get("category", "")
+    distance = place.get("distance", "")
+    place_url = place.get("place_url", place.get("kakao_map_url", ""))
+
+    # 추천 이유 생성
+    reason = generate_recommendation_reason(category, situation, time_of_day)
+
+    # 이동 방법 힌트
+    travel_tip = generate_travel_tip(distance)
+
+    # 알아야 할 것
+    notice_info = generate_notice(category)
+
+    return {
+        "step": step_num,
+        "name": place.get("place_name", place.get("name", "")),
+        "address": place.get("road_address_name", place.get("address", "")),
+        "category": category,
+        "phone": place.get("phone", "카카오맵에서 확인"),
+        "distance": f"{distance}m" if distance else "",
+        "kakao_map_url": place_url,
+
+        # 강화된 정보 (v3.4)
+        "why_recommend": reason,
+        "how_to_get_there": travel_tip,
+        "notice": notice_info["notice"],
+        "tip": notice_info["tip"],
+        "hours_info": "운영시간은 카카오맵에서 확인하세요 →",
+    }
+
+
 def get_current_time_of_day() -> str:
     """현재 한국 시간 기준 시간대 반환"""
     hour = get_korea_time().hour
@@ -662,19 +860,11 @@ async def get_smart_recommendation(
     if "error" in result:
         return result
 
-    # 장소에 카카오맵 링크 강조 추가
+    # 장소에 강화된 정보 추가 (v3.4)
     places_with_links = []
     for i, place in enumerate(result.get("places", []), 1):
-        place_info = {
-            "순서": i,
-            "name": place.get("name", ""),
-            "address": place.get("address", ""),
-            "category": place.get("category", ""),
-            "phone": place.get("phone", ""),
-            "distance": place.get("distance", ""),
-            "kakao_map_url": place.get("place_url", ""),  # URL 강조
-        }
-        places_with_links.append(place_info)
+        enriched = enrich_place_info(place, situation, time_of_day, i)
+        places_with_links.append(enriched)
 
     # 결과 구성
     return {
@@ -689,7 +879,7 @@ async def get_smart_recommendation(
         "places": places_with_links,
         "total_found": result.get("total_count", 0),
         "search_keyword": search_keyword,
-        "tip": f"장소를 클릭하면 카카오맵에서 상세 정보를 볼 수 있어요!",
+        "tip": f"각 장소의 '운영시간은 카카오맵에서 확인하세요' 링크를 클릭하세요!",
     }
 
 
@@ -736,7 +926,10 @@ async def get_weather_based_course(
     elif "흐림" in weather_sky:
         weather_warning = "흐린 날씨네요. 실내/야외 모두 괜찮아요."
 
-    # 코스 구성 (3단계)
+    # 현재 시간대 파악
+    time_of_day = get_current_time_of_day()
+
+    # 코스 구성 (3단계) - 강화된 정보 포함
     course_steps = []
 
     # 1단계: 카페/브런치 (시작)
@@ -744,15 +937,10 @@ async def get_weather_based_course(
     step1_result = await search_place_by_keyword(step1_keyword, x, y, 2000, 2, "accuracy")
     if step1_result.get("places"):
         place = step1_result["places"][0]
-        course_steps.append({
-            "step": 1,
-            "type": "시작",
-            "name": place.get("place_name", place.get("name", "")),
-            "address": place.get("road_address_name", place.get("address", "")),
-            "category": "카페/브런치",
-            "kakao_map_url": place.get("place_url", ""),
-            "tip": "여유롭게 대화하며 시작해요",
-        })
+        enriched = enrich_place_info(place, situation, time_of_day, 1)
+        enriched["type"] = "시작"
+        enriched["course_tip"] = "여유롭게 대화하며 시작해요"
+        course_steps.append(enriched)
 
     # 2단계: 메인 활동
     if situation == "데이트":
@@ -767,15 +955,10 @@ async def get_weather_based_course(
     step2_result = await search_place_by_keyword(step2_keyword, x, y, 3000, 2, "accuracy")
     if step2_result.get("places"):
         place = step2_result["places"][0]
-        course_steps.append({
-            "step": 2,
-            "type": "메인",
-            "name": place.get("place_name", place.get("name", "")),
-            "address": place.get("road_address_name", place.get("address", "")),
-            "category": "메인 활동",
-            "kakao_map_url": place.get("place_url", ""),
-            "tip": "오늘의 하이라이트!",
-        })
+        enriched = enrich_place_info(place, situation, time_of_day, 2)
+        enriched["type"] = "메인"
+        enriched["course_tip"] = "오늘의 하이라이트!"
+        course_steps.append(enriched)
 
     # 3단계: 식사/마무리
     hour = get_korea_time().hour
@@ -789,15 +972,10 @@ async def get_weather_based_course(
     step3_result = await search_place_by_keyword(step3_keyword, x, y, 3000, 2, "accuracy")
     if step3_result.get("places"):
         place = step3_result["places"][0]
-        course_steps.append({
-            "step": 3,
-            "type": "마무리",
-            "name": place.get("place_name", place.get("name", "")),
-            "address": place.get("road_address_name", place.get("address", "")),
-            "category": "식사",
-            "kakao_map_url": place.get("place_url", ""),
-            "tip": "맛있는 식사로 마무리!",
-        })
+        enriched = enrich_place_info(place, situation, time_of_day, 3)
+        enriched["type"] = "마무리"
+        enriched["course_tip"] = "맛있는 식사로 마무리!"
+        course_steps.append(enriched)
 
     return {
         "location": location,
@@ -812,5 +990,8 @@ async def get_weather_based_course(
         "course": course_steps,
         "course_summary": " → ".join([s["name"] for s in course_steps]),
         "total_steps": len(course_steps),
-        "tip": "각 장소의 카카오맵 링크를 클릭하면 상세 정보와 길찾기를 할 수 있어요!",
+        "guide": {
+            "how_to_use": "각 장소의 kakao_map_url을 클릭하면 상세 정보/길찾기 가능",
+            "what_you_get": "추천이유(why_recommend), 이동방법(how_to_get_there), 알아야 할 것(notice)",
+        },
     }

@@ -292,28 +292,64 @@ async def get_air_quality_info(location: str = "서울") -> dict:
 async def get_outfit_recommendation_tool(
     location: str = "서울",
     temperature: float | None = None,
+    situation: str = "",
 ) -> dict:
     """
-    날씨에 맞는 옷차림을 추천합니다.
+    날씨에 맞는 옷차림을 추천합니다! (v3.4 TPO별/색상별 세분화)
 
-    사용 예시: "오늘 뭐 입지?", "옷 추천해줘", "외출할 때 뭐 입을까?"
+    사용 예시:
+    - "오늘 뭐 입지?"
+    - "데이트할 때 뭐 입을까?"
+    - "출근할 때 옷 추천해줘"
+    - "운동하러 갈 때 옷차림"
 
     Args:
         location: 지역명 (예: "서울", "부산")
         temperature: 직접 기온을 입력할 경우 (선택사항)
+        situation: 상황 (출근, 데이트, 운동, 캐주얼) - 비어있으면 일반 추천
 
     Returns:
-        기온별 옷차림 추천 (상의, 하의, 겉옷, 액세서리)
+        기온별/TPO별/색상별 옷차림 추천
     """
+    # 실시간 날씨 조회
+    weather_data = await cached_get_weather(location)
+
     if temperature is None:
-        # 실시간 날씨 조회
-        weather_data = await cached_get_weather(location)
         if "error" in weather_data:
             return {"error": weather_data["error"]}
         temperature = weather_data["current"].get("temperature", 20)
 
-    weather = WeatherCondition(temperature=temperature)
-    recommendation = get_outfit_recommendation(weather)
+    # 날씨 조건 구성 (색상 추천을 위해 하늘상태 포함)
+    sky = ""
+    precip_type = "없음"
+    humidity = 50
+    wind_speed = 0
+
+    if "error" not in weather_data:
+        current = weather_data.get("current", {})
+        sky = current.get("sky", "")
+        precip_type = current.get("precipitation_type", "없음")
+        humidity = current.get("humidity", 50)
+        wind_speed = current.get("wind_speed", 0)
+
+    weather = WeatherCondition(
+        temperature=temperature,
+        sky=sky,
+        precipitation_type=precip_type,
+        humidity=humidity,
+        wind_speed=wind_speed,
+    )
+
+    # TPO 매핑
+    tpo_map = {
+        "출근": "출근", "회사": "출근",
+        "데이트": "데이트", "만남": "데이트",
+        "운동": "운동", "헬스": "운동",
+        "캐주얼": "캐주얼", "일상": "캐주얼", "편한": "캐주얼",
+    }
+    tpo = tpo_map.get(situation, situation) if situation else ""
+
+    recommendation = get_outfit_recommendation(weather, tpo)
 
     return {
         "location": location,
@@ -321,6 +357,11 @@ async def get_outfit_recommendation_tool(
         "category": recommendation["category"],
         "outfit": recommendation["recommendation"],
         "tip": recommendation["tip"],
+
+        # v3.4 세분화
+        "colors": recommendation.get("colors", {}),
+        "by_situation": recommendation.get("by_situation", {}),
+        "your_situation": recommendation.get("your_situation"),
     }
 
 
@@ -2165,9 +2206,10 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "weather-life-mcp",
-        "version": "3.3.0",
+        "version": "3.4.0",
         "tools": 38,
         "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant", "get_place_recommendation", "whats_good_here", "get_smart_course", "plan_my_day"],
+        "v3.4_features": ["place_info_enriched", "why_recommend", "how_to_get_there", "notice", "hours_info", "outfit_tpo", "outfit_colors"],
         "v3.3_features": ["weather_based_course", "get_smart_course", "plan_my_day", "kakao_map_url_highlight"],
         "v3.2_features": ["nationwide_support", "dynamic_geocoding", "situation_recommendation", "time_based_recommendation"],
         "v3.1_features": ["kakao_maps_api", "search_nearby_places", "get_directions_link", "search_restaurant"],
