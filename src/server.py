@@ -98,6 +98,9 @@ from src.activity_recommender import (
     calculate_golf_index,
     calculate_running_index,
     calculate_bbq_index,
+    # v3.0 신규
+    calculate_date_course,
+    get_activity_spots,
 )
 from functools import lru_cache
 from datetime import datetime, timedelta
@@ -1437,8 +1440,144 @@ def _get_activity_korean_name(activity: str) -> str:
         "car_wash": "세차",
         "exercise": "운동",
         "kimjang": "김장",
+        "drive": "드라이브",
+        "camping": "캠핑",
+        "fishing": "낚시",
+        "golf": "골프",
+        "running": "러닝",
+        "bbq": "바베큐",
+        "date": "데이트",
     }
     return names.get(activity, activity)
+
+
+# =============================================================================
+# v3.0 신규: 데이트 코스 & 장소 추천
+# =============================================================================
+
+
+@mcp.tool()
+async def get_date_course(location: str = "서울", style: str = "romantic") -> dict:
+    """
+    날씨 기반 데이트 코스를 추천합니다.
+    날씨, 미세먼지, 기온을 분석하여 최적의 데이트 코스와 장소를 추천해드립니다.
+
+    사용 예시: "오늘 데이트 어디 가?", "여친이랑 뭐하면 좋을까?", "맛집 데이트 추천해줘"
+
+    Args:
+        location: 지역명 (예: 서울, 강남구)
+        style: 데이트 스타일
+            - romantic: 로맨틱한 분위기 (기본값)
+            - active: 활동적인 데이트
+            - cultural: 문화/예술 데이트
+            - food: 맛집 투어
+
+    Returns:
+        데이트 적합도, 추천 코스, 장소별 정보
+    """
+    weather = await cached_get_weather(location)
+    air = await cached_get_air_quality(location)
+
+    if "error" in weather:
+        return {"error": weather["error"], "location": location}
+
+    # 날씨 데이터 구성
+    weather_data = {
+        "temperature": weather.get("current_weather", {}).get("temperature", 20),
+        "humidity": weather.get("current_weather", {}).get("humidity", 50),
+        "rain_prob": weather.get("today_summary", {}).get("precipitation_probability", 0),
+        "sky": weather.get("today_summary", {}).get("sky", "맑음"),
+    }
+
+    # 대기질 데이터
+    air_data = {}
+    if air and "error" not in air:
+        air_data = air
+
+    result = calculate_date_course(weather_data, air_data, style)
+    result["location"] = location
+
+    return result
+
+
+@mcp.tool()
+async def get_recommended_spots(location: str = "서울", activity: str = "all") -> dict:
+    """
+    활동별 추천 장소를 알려드립니다.
+    현재 날씨를 분석하여 적합한 장소를 추천합니다.
+
+    사용 예시: "등산 어디가 좋아?", "캠핑장 추천해줘", "드라이브 코스 알려줘"
+
+    Args:
+        location: 지역명
+        activity: 활동 종류
+            - hiking: 등산
+            - camping: 캠핑
+            - picnic: 피크닉
+            - drive: 드라이브
+            - fishing: 낚시
+            - golf: 골프
+            - running: 러닝
+            - bbq: 바베큐
+            - all: 모든 활동 (기본값)
+
+    Returns:
+        추천 장소 목록, 날씨 적합도
+    """
+    from src.spots_database import (
+        HIKING_SPOTS, CAMPING_SPOTS, PICNIC_SPOTS,
+        DRIVE_COURSES, FISHING_SPOTS, GOLF_COURSES,
+        RUNNING_COURSES, BBQ_SPOTS
+    )
+
+    weather = await cached_get_weather(location)
+
+    if "error" in weather:
+        return {"error": weather["error"], "location": location}
+
+    # 기본 날씨 점수 계산
+    temp = weather.get("current_weather", {}).get("temperature", 20)
+    rain_prob = weather.get("today_summary", {}).get("precipitation_probability", 0)
+
+    base_score = 100
+    if rain_prob >= 50:
+        base_score -= 30
+    if temp < 0 or temp > 35:
+        base_score -= 20
+
+    results = {"location": location, "weather_score": base_score, "activities": {}}
+
+    activity_map = {
+        "hiking": ("등산", HIKING_SPOTS),
+        "camping": ("캠핑", CAMPING_SPOTS),
+        "picnic": ("피크닉", PICNIC_SPOTS),
+        "drive": ("드라이브", DRIVE_COURSES),
+        "fishing": ("낚시", FISHING_SPOTS),
+        "golf": ("골프", GOLF_COURSES),
+        "running": ("러닝", RUNNING_COURSES),
+        "bbq": ("바베큐", BBQ_SPOTS),
+    }
+
+    if activity == "all":
+        for key, (name, spots) in activity_map.items():
+            count = 3 if base_score >= 70 else 2
+            results["activities"][key] = {
+                "name": name,
+                "spots": spots[:count],
+                "total": len(spots)
+            }
+    elif activity in activity_map:
+        name, spots = activity_map[activity]
+        count = 5 if base_score >= 70 else 3
+        results["activities"][activity] = {
+            "name": name,
+            "spots": spots[:count],
+            "total": len(spots)
+        }
+    else:
+        return {"error": f"지원하지 않는 활동: {activity}", "available": list(activity_map.keys())}
+
+    return results
 
 
 # =============================================================================
@@ -1581,9 +1720,10 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "weather-life-mcp",
-        "version": "2.5.0",
-        "tools": 29,
-        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq"],
+        "version": "3.0.0",
+        "tools": 31,
+        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots"],
+        "v3.0_features": ["date_course", "recommended_spots", "spots_database"],
         "v2.5_features": ["drive_index", "camping_index", "fishing_index", "golf_index", "running_index", "bbq_index"],
         "v2.4_features": ["migraine_risk", "sleep_quality", "photography_index", "joint_pain_risk"],
         "v2.3_features": ["cold_flu_risk", "commute_index", "allergy_risk", "scientific_basis"]

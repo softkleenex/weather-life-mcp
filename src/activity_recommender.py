@@ -2779,3 +2779,196 @@ def calculate_bbq_index(weather_data: dict) -> dict:
         "recommendations": recommendations,
         "warnings": warnings
     }
+
+
+# =============================================================================
+# v3.0 신규: 데이트 코스 추천
+# =============================================================================
+
+def calculate_date_course(weather_data: dict, air_data: dict, style: str = "romantic") -> dict:
+    """
+    날씨 기반 데이트 코스 추천 (v3.0)
+
+    Args:
+        weather_data: 날씨 데이터
+        air_data: 대기질 데이터
+        style: 데이트 스타일 (romantic/active/cultural/food)
+
+    Returns:
+        추천 데이트 코스 및 날씨 분석
+    """
+    from src.spots_database import DATE_COURSES, PICNIC_SPOTS
+
+    # 날씨 데이터 추출
+    temperature = weather_data.get("temperature", 20)
+    rain_prob = weather_data.get("rain_prob", 0)
+    humidity = weather_data.get("humidity", 50)
+    sky = weather_data.get("sky", "맑음")
+
+    # PM2.5 데이터
+    pm25 = 25
+    if air_data and "pm25" in air_data:
+        pm25_data = air_data["pm25"]
+        if isinstance(pm25_data, dict):
+            pm25 = pm25_data.get("value", 25)
+        else:
+            pm25 = pm25_data
+
+    # 데이트 적합도 점수 계산
+    score = 100
+    factors = []
+    warnings = []
+
+    # 1. 날씨 영향
+    if rain_prob >= 70:
+        score -= 40
+        factors.append(f"강수확률 {rain_prob}%: 실내 데이트 추천")
+        style = "food"
+    elif rain_prob >= 40:
+        score -= 20
+        factors.append(f"강수확률 {rain_prob}%: 우산 준비")
+
+    # 2. 기온 영향
+    if temperature < 0:
+        score -= 25
+        factors.append(f"영하 {temperature}°C: 따뜻한 실내 추천")
+    elif temperature < 5:
+        score -= 15
+        factors.append(f"추위 {temperature}°C: 방한 필수")
+    elif 15 <= temperature <= 25:
+        score += 10
+        factors.append(f"쾌적한 {temperature}°C: 야외 활동 최적")
+    elif temperature > 30:
+        score -= 20
+        factors.append(f"더위 {temperature}°C: 실내 또는 저녁 추천")
+
+    # 3. 미세먼지 영향
+    if pm25 > 75:
+        score -= 30
+        factors.append("미세먼지 나쁨: 실내 데이트 권장")
+        warnings.append("야외 활동 자제, 마스크 필수")
+        style = "food"
+    elif pm25 > 35:
+        score -= 15
+        factors.append("미세먼지 보통: 장시간 야외 주의")
+
+    # 점수 정규화
+    score = max(0, min(100, score))
+
+    # 등급 결정
+    if score >= 80:
+        grade = "최적"
+        message = "데이트하기 완벽한 날씨!"
+    elif score >= 60:
+        grade = "좋음"
+        message = "데이트하기 좋은 날씨입니다."
+    elif score >= 40:
+        grade = "보통"
+        message = "데이트 가능하지만 주의사항 있음"
+    else:
+        grade = "주의"
+        message = "실내 데이트를 추천합니다."
+
+    # 스타일에 맞는 코스 선택
+    courses = DATE_COURSES.get(style, DATE_COURSES["romantic"])
+
+    # 추천 코스 (상위 3개)
+    recommended_courses = []
+    for course in courses[:3]:
+        course_info = course.copy()
+        if rain_prob >= 50:
+            course_info["weather_note"] = "비 예보로 대안 고려"
+        elif temperature < 5:
+            course_info["weather_note"] = "추위 대비 필수"
+        else:
+            course_info["weather_note"] = "날씨 적합"
+        recommended_courses.append(course_info)
+
+    # 시간대별 추천
+    from datetime import datetime
+    hour = datetime.now().hour
+
+    if hour < 12:
+        time_recommendation = "오전 브런치 → 산책 → 점심"
+    elif hour < 17:
+        time_recommendation = "오후 카페 → 산책 → 저녁"
+    else:
+        time_recommendation = "저녁 맛집 → 야경 → 카페"
+
+    # 한강 피크닉 추천
+    hangang_tip = None
+    if score >= 70 and 10 <= temperature <= 28 and rain_prob < 30:
+        hangang_tip = {
+            "recommendation": "한강 피크닉 추천!",
+            "best_spots": [spot["name"] for spot in PICNIC_SPOTS[:3]],
+            "chimaek_time": "17:00-21:00 치맥 타임"
+        }
+
+    return {
+        "score": score,
+        "grade": grade,
+        "message": message,
+        "style": style,
+        "factors": factors,
+        "warnings": warnings,
+        "recommended_courses": recommended_courses,
+        "time_recommendation": time_recommendation,
+        "hangang_tip": hangang_tip,
+        "weather_summary": f"{sky}, {temperature}°C, 강수확률 {rain_prob}%"
+    }
+
+
+# =============================================================================
+# v3.0 신규: 야외 활동 장소 추천
+# =============================================================================
+
+def get_activity_spots(activity: str, weather_score: int, location: str = "서울") -> dict:
+    """
+    활동별 추천 장소 반환 (v3.0)
+    """
+    from src.spots_database import (
+        HIKING_SPOTS, CAMPING_SPOTS, PICNIC_SPOTS,
+        DRIVE_COURSES, FISHING_SPOTS, GOLF_COURSES,
+        RUNNING_COURSES, BBQ_SPOTS
+    )
+
+    spots_map = {
+        "hiking": {"data": HIKING_SPOTS, "name": "등산"},
+        "camping": {"data": CAMPING_SPOTS, "name": "캠핑"},
+        "picnic": {"data": PICNIC_SPOTS, "name": "피크닉"},
+        "drive": {"data": DRIVE_COURSES, "name": "드라이브"},
+        "fishing": {"data": FISHING_SPOTS, "name": "낚시"},
+        "golf": {"data": GOLF_COURSES, "name": "골프"},
+        "running": {"data": RUNNING_COURSES, "name": "러닝"},
+        "bbq": {"data": BBQ_SPOTS, "name": "바베큐"},
+    }
+
+    if activity not in spots_map:
+        return {"error": f"지원하지 않는 활동: {activity}"}
+
+    activity_info = spots_map[activity]
+    all_spots = activity_info["data"]
+    activity_name = activity_info["name"]
+
+    # 점수에 따라 추천 개수 조절
+    if weather_score >= 80:
+        count = 5
+        recommendation = f"{activity_name}하기 최적의 날씨!"
+    elif weather_score >= 60:
+        count = 3
+        recommendation = f"{activity_name}하기 좋은 날씨입니다."
+    elif weather_score >= 40:
+        count = 2
+        recommendation = f"{activity_name} 가능하지만 주의사항 확인"
+    else:
+        count = 1
+        recommendation = f"오늘은 {activity_name}에 적합하지 않아요."
+
+    return {
+        "activity": activity,
+        "activity_name": activity_name,
+        "weather_score": weather_score,
+        "recommendation": recommendation,
+        "spots": all_spots[:count],
+        "total_available": len(all_spots)
+    }
