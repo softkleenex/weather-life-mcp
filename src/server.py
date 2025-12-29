@@ -1,8 +1,20 @@
 """
-Weather Life MCP 서버 v2.5
-날씨 + 미세먼지 + 생활 도우미 + 한국 특화 + 건강 MCP
+Weather Life MCP 서버 v3.1
+날씨 + 미세먼지 + 생활 도우미 + 한국 특화 + 건강 + 지도 MCP
 
 PlayMCP 공모전 (MCP Player 10) 출품작
+
+v3.1 신규 기능 (Kakao Maps API 연동):
+- 주변 장소 검색 (search_nearby_places) - 키워드/카테고리 검색
+- 길찾기 링크 (get_directions_link) - 자동차/대중교통/도보/자전거
+- 맛집 검색 (search_restaurant) - 지역별/음식종류별 검색
+- 한국 전역 100개+ 지역 좌표 지원
+- 34개 도구로 확장!
+
+v3.0 신규 기능 (장소 추천 시스템):
+- 데이트 코스 추천 (날씨 기반)
+- 활동별 추천 장소 (등산/캠핑/드라이브 등)
+- 80개+ 한국 명소 데이터베이스
 
 v2.5 신규 기능 (야외 활동 지수 6종 추가):
 - 드라이브지수 (Drive Index) - 강수/시야/바람/노면 상태 분석
@@ -101,6 +113,14 @@ from src.activity_recommender import (
     # v3.0 신규
     calculate_date_course,
     get_activity_spots,
+)
+from src.kakao_map_api import (
+    search_place_by_keyword,
+    search_place_by_category,
+    geocode,
+    get_directions_url,
+    get_location_coordinates,
+    CATEGORY_CODES,
 )
 from functools import lru_cache
 from datetime import datetime, timedelta
@@ -1581,6 +1601,157 @@ async def get_recommended_spots(location: str = "서울", activity: str = "all")
 
 
 # =============================================================================
+# v3.1 신규: Kakao Maps API 연동
+# =============================================================================
+
+
+@mcp.tool()
+async def search_nearby_places(
+    keyword: str,
+    location: str = "서울",
+    radius: int = 2000,
+    count: int = 5
+) -> dict:
+    """
+    주변 장소를 검색합니다. (Kakao Maps API)
+    맛집, 카페, 관광지 등 키워드로 검색하거나 카테고리별로 검색할 수 있습니다.
+
+    사용 예시: "강남역 근처 맛집", "홍대 카페 추천", "서울역 주변 약국"
+
+    Args:
+        keyword: 검색 키워드 (예: "맛집", "카페", "편의점", "주차장")
+        location: 검색 중심 지역 (예: "서울", "강남구", "홍대입구")
+        radius: 검색 반경 (미터, 기본값: 2000, 최대: 20000)
+        count: 결과 개수 (기본값: 5, 최대: 15)
+
+    Returns:
+        장소 목록 (이름, 주소, 전화번호, 거리, 카카오맵 링크)
+    """
+    # 지역 좌표 조회
+    coords = get_location_coordinates(location)
+    if not coords:
+        return {"error": f"지역을 찾을 수 없습니다: {location}"}
+
+    x, y = coords  # 경도, 위도
+
+    # 카테고리 검색 시도 (한글 키워드가 카테고리에 해당하면)
+    if keyword in CATEGORY_CODES:
+        result = await search_place_by_category(keyword, x, y, radius, count)
+    else:
+        # 일반 키워드 검색
+        result = await search_place_by_keyword(keyword, x, y, radius, count, "distance")
+
+    if "error" in result:
+        return result
+
+    result["search_center"] = location
+    result["radius_meters"] = radius
+
+    return result
+
+
+@mcp.tool()
+async def get_directions_link(
+    origin: str,
+    destination: str,
+    mode: str = "car"
+) -> dict:
+    """
+    출발지에서 목적지까지 길찾기 링크를 생성합니다. (Kakao Maps)
+    자동차, 대중교통, 도보, 자전거 경로를 안내합니다.
+
+    사용 예시: "서울역에서 강남역까지", "홍대에서 이태원 가는 길", "집에서 회사까지 대중교통"
+
+    Args:
+        origin: 출발지 (예: "서울역", "강남구", "홍대입구")
+        destination: 목적지 (예: "강남역", "이태원", "서울시청")
+        mode: 이동 수단
+            - car: 자동차 (기본값)
+            - transit: 대중교통
+            - walk: 도보
+            - bike: 자전거
+
+    Returns:
+        카카오맵 길찾기 URL, 이동 수단 정보
+    """
+    # 출발지 좌표
+    origin_coords = get_location_coordinates(origin)
+    if not origin_coords:
+        # 주소 검색 시도
+        geo_result = await geocode(origin)
+        if "error" in geo_result:
+            return {"error": f"출발지를 찾을 수 없습니다: {origin}"}
+        origin_coords = (float(geo_result["x"]), float(geo_result["y"]))
+
+    # 목적지 좌표
+    dest_coords = get_location_coordinates(destination)
+    if not dest_coords:
+        # 주소 검색 시도
+        geo_result = await geocode(destination)
+        if "error" in geo_result:
+            return {"error": f"목적지를 찾을 수 없습니다: {destination}"}
+        dest_coords = (float(geo_result["x"]), float(geo_result["y"]))
+
+    # 길찾기 URL 생성
+    result = get_directions_url(
+        origin_name=origin,
+        origin_x=origin_coords[0],
+        origin_y=origin_coords[1],
+        dest_name=destination,
+        dest_x=dest_coords[0],
+        dest_y=dest_coords[1],
+        mode=mode
+    )
+
+    return result
+
+
+@mcp.tool()
+async def search_restaurant(
+    location: str = "서울",
+    cuisine: str = "",
+    count: int = 5
+) -> dict:
+    """
+    맛집/음식점을 검색합니다. (Kakao Maps API)
+    지역과 음식 종류로 맛집을 찾아드립니다.
+
+    사용 예시: "강남 맛집", "홍대 파스타", "이태원 멕시칸"
+
+    Args:
+        location: 검색 지역 (예: "강남", "홍대", "이태원")
+        cuisine: 음식 종류 (예: "한식", "파스타", "초밥", 빈 값이면 전체)
+        count: 결과 개수 (기본값: 5)
+
+    Returns:
+        맛집 목록 (이름, 주소, 카테고리, 카카오맵 링크)
+    """
+    # 지역 좌표 조회
+    coords = get_location_coordinates(location)
+    if not coords:
+        return {"error": f"지역을 찾을 수 없습니다: {location}"}
+
+    x, y = coords
+
+    # 검색 키워드 구성
+    if cuisine:
+        keyword = f"{location} {cuisine} 맛집"
+    else:
+        keyword = f"{location} 맛집"
+
+    result = await search_place_by_keyword(keyword, x, y, 3000, count, "accuracy")
+
+    if "error" in result:
+        return result
+
+    result["search_location"] = location
+    if cuisine:
+        result["cuisine"] = cuisine
+
+    return result
+
+
+# =============================================================================
 # Resources
 # =============================================================================
 
@@ -1720,9 +1891,10 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "weather-life-mcp",
-        "version": "3.0.0",
-        "tools": 31,
-        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots"],
+        "version": "3.1.0",
+        "tools": 34,
+        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant"],
+        "v3.1_features": ["kakao_maps_api", "search_nearby_places", "get_directions_link", "search_restaurant", "100+_locations"],
         "v3.0_features": ["date_course", "recommended_spots", "spots_database"],
         "v2.5_features": ["drive_index", "camping_index", "fishing_index", "golf_index", "running_index", "bbq_index"],
         "v2.4_features": ["migraine_risk", "sleep_quality", "photography_index", "joint_pain_risk"],
