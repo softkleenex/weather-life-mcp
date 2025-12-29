@@ -136,6 +136,36 @@ def cached_async(ttl_seconds: int = 300):
     return decorator
 
 
+# =============================================================================
+# 캐싱된 API 래퍼 함수들 (v2.5 성능 최적화)
+# =============================================================================
+
+# 원본 함수 저장 (래퍼에서 사용)
+_orig_get_weather = get_current_weather
+_orig_get_forecast = get_weather_forecast
+_orig_get_air = get_air_quality
+
+@cached_async(ttl_seconds=300)  # 5분 캐시
+async def cached_get_weather(location: str) -> dict:
+    """캐싱된 날씨 조회"""
+    return await _orig_get_weather(location)
+
+@cached_async(ttl_seconds=300)  # 5분 캐시
+async def cached_get_forecast(location: str) -> dict:
+    """캐싱된 예보 조회"""
+    return await _orig_get_forecast(location)
+
+@cached_async(ttl_seconds=600)  # 10분 캐시
+async def cached_get_air_quality(location: str) -> dict:
+    """캐싱된 미세먼지 조회"""
+    return await _orig_get_air(location)
+
+@cached_async(ttl_seconds=3600)  # 1시간 캐시
+async def cached_get_life_index(location: str) -> dict:
+    """캐싱된 생활기상지수 조회"""
+    return await get_life_index_data(location)
+
+
 # MCP 서버 인스턴스 생성
 mcp = FastMCP(
     name="weather-life-mcp",
@@ -170,8 +200,8 @@ async def get_weather(location: str = "서울") -> dict:
     Returns:
         현재 날씨 정보와 오늘의 예보
     """
-    current = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
+    current = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
 
     if "error" in current:
         return {"error": current["error"], "location": location}
@@ -206,7 +236,7 @@ async def get_air_quality_info(location: str = "서울") -> dict:
     Returns:
         미세먼지(PM10), 초미세먼지(PM2.5) 수치 및 등급
     """
-    result = await get_air_quality(location)
+    result = await cached_get_air_quality(location)
 
     if "error" in result:
         return {"error": result["error"], "location": location}
@@ -239,7 +269,7 @@ async def get_outfit_recommendation_tool(
     """
     if temperature is None:
         # 실시간 날씨 조회
-        weather_data = await get_current_weather(location)
+        weather_data = await cached_get_weather(location)
         if "error" in weather_data:
             return {"error": weather_data["error"]}
         temperature = weather_data["current"].get("temperature", 20)
@@ -271,9 +301,9 @@ async def should_i_go_out(location: str = "서울") -> dict:
         외출 적합도 점수 (0-100), 등급, 주의사항, 옷차림 추천
     """
     # 날씨 정보 조회
-    weather_data = await get_current_weather(location)
-    forecast_data = await get_weather_forecast(location)
-    air_data = await get_air_quality(location)
+    weather_data = await cached_get_weather(location)
+    forecast_data = await cached_get_forecast(location)
+    air_data = await cached_get_air_quality(location)
 
     # 기본값 설정
     temp = 20
@@ -366,9 +396,9 @@ async def get_weather_summary(location: str = "서울") -> str:
     Returns:
         날씨 요약 문장
     """
-    weather_data = await get_current_weather(location)
-    forecast_data = await get_weather_forecast(location)
-    air_data = await get_air_quality(location)
+    weather_data = await cached_get_weather(location)
+    forecast_data = await cached_get_forecast(location)
+    air_data = await cached_get_air_quality(location)
 
     # 기본 정보
     temp = "알 수 없음"
@@ -411,7 +441,7 @@ async def get_weekly_forecast(location: str = "서울") -> dict:
     """
     from datetime import datetime, timedelta
 
-    forecast_data = await get_weather_forecast(location)
+    forecast_data = await cached_get_forecast(location)
 
     if "error" in forecast_data:
         return {"error": forecast_data["error"], "location": location}
@@ -508,7 +538,7 @@ async def get_life_index(location: str = "서울") -> dict:
         자외선지수, 체감온도, 꽃가루농도, 식중독지수 (계절에 따라 일부만 제공)
     """
     # 현재 날씨 데이터 가져오기 (체감온도/식중독 계산용)
-    weather_data = await get_current_weather(location)
+    weather_data = await cached_get_weather(location)
 
     temp = None
     humidity = None
@@ -547,7 +577,7 @@ async def get_food_safety_index(location: str = "서울") -> dict:
     Returns:
         식중독지수, 등급, 주의사항
     """
-    weather_data = await get_current_weather(location)
+    weather_data = await cached_get_weather(location)
 
     temp = None
     humidity = None
@@ -565,9 +595,9 @@ async def get_food_safety_index(location: str = "서울") -> dict:
 
 async def _get_weather_data(location: str) -> WeatherData:
     """날씨 데이터를 WeatherData 객체로 변환"""
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
-    air = await get_air_quality(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+    air = await cached_get_air_quality(location)
 
     # 기본값
     temp = 20
@@ -730,7 +760,7 @@ async def get_kimjang_timing(location: str = "서울") -> dict:
     weather_data = await _get_weather_data(location)
 
     # 최저/최고 기온 추가
-    forecast = await get_weather_forecast(location)
+    forecast = await cached_get_forecast(location)
     if "error" not in forecast:
         summary = forecast.get("today_summary", {})
         weather_data.temp_min = summary.get("min_temperature")
@@ -858,9 +888,9 @@ async def get_migraine_risk(location: str = "서울") -> dict:
         편두통위험지수 (0-100, 높을수록 위험), 위험요인, 예방수칙
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
-    air = await get_air_quality(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+    air = await cached_get_air_quality(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -927,8 +957,8 @@ async def get_sleep_quality_index(location: str = "서울") -> dict:
         수면컨디션지수 (0-100, 높을수록 좋음), 최적조건, 개선팁
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    air = await get_air_quality(location)
+    weather = await cached_get_weather(location)
+    air = await cached_get_air_quality(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -974,8 +1004,8 @@ async def get_photography_index(location: str = "서울") -> dict:
         사진촬영지수 (0-100, 높을수록 좋음), 골든아워, 촬영조건
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -1016,9 +1046,9 @@ async def get_joint_pain_risk(location: str = "서울") -> dict:
         관절통위험지수 (0-100, 높을수록 관절에 좋음), 위험요인, 관리수칙
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
-    air = await get_air_quality(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+    air = await cached_get_air_quality(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -1070,9 +1100,9 @@ async def get_drive_index(location: str = "서울") -> dict:
         드라이브지수 (0-100), 등급, 도로 조건, 안전 팁
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
-    air = await get_air_quality(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+    air = await cached_get_air_quality(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -1130,9 +1160,9 @@ async def get_camping_index(location: str = "서울") -> dict:
         캠핑지수 (0-100), 등급, 날씨 조건, 경고, 팁
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
-    air = await get_air_quality(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+    air = await cached_get_air_quality(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -1186,8 +1216,8 @@ async def get_fishing_index(location: str = "서울") -> dict:
         낚시지수 (0-100), 등급, 날씨 조건, 최적 시간대, 팁
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -1229,9 +1259,9 @@ async def get_golf_index(location: str = "서울") -> dict:
         골프지수 (0-100), 등급, 날씨 조건, 플레이 팁
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
-    air = await get_air_quality(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+    air = await cached_get_air_quality(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -1284,9 +1314,9 @@ async def get_running_index(location: str = "서울") -> dict:
         러닝지수 (0-100), 등급, 날씨 조건, 최적 시간대, 건강 팁
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
-    air = await get_air_quality(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+    air = await cached_get_air_quality(location)
 
     # weather_data dict 구성
     weather_data = {
@@ -1339,8 +1369,8 @@ async def get_bbq_index(location: str = "서울") -> dict:
         바베큐지수 (0-100), 등급, 날씨 조건, 안전 팁
     """
     # 날씨 데이터 수집
-    weather = await get_current_weather(location)
-    forecast = await get_weather_forecast(location)
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
 
     # weather_data dict 구성
     weather_data = {
