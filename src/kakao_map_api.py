@@ -35,47 +35,56 @@ def calculate_distance_between_coords(lat1: float, lon1: float, lat2: float, lon
     return int(R * c)
 
 
-async def find_nearest_subway(x: str, y: str) -> Optional[Dict]:
+async def find_nearest_landmark(x: str, y: str) -> Optional[Dict]:
     """
-    주어진 좌표에서 가장 가까운 지하철역 찾기
+    주어진 좌표에서 가장 가까운 랜드마크 찾기
+    우선순위: 지하철역 > 버스터미널 > 기차역
 
     Args:
         x: 경도 (longitude)
         y: 위도 (latitude)
 
     Returns:
-        가장 가까운 지하철역 정보 또는 None
+        가장 가까운 랜드마크 정보 또는 None
     """
     if not KAKAO_REST_API_KEY:
         return None
 
+    # 검색 우선순위: 지하철역 > 버스터미널
+    search_configs = [
+        ("SW8", "역", 2000),      # 지하철역, 2km
+        ("BT1", "터미널", 5000),  # 버스터미널, 5km
+    ]
+
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{KAKAO_LOCAL_API}/search/category.json",
-                headers={"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"},
-                params={
-                    "category_group_code": "SW8",  # 지하철역
-                    "x": x,
-                    "y": y,
-                    "radius": 2000,  # 2km 반경
-                    "sort": "distance",
-                    "size": 1
-                },
-                timeout=5.0
-            )
+            for category_code, suffix_hint, radius in search_configs:
+                response = await client.get(
+                    f"{KAKAO_LOCAL_API}/search/category.json",
+                    headers={"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"},
+                    params={
+                        "category_group_code": category_code,
+                        "x": x,
+                        "y": y,
+                        "radius": radius,
+                        "sort": "distance",
+                        "size": 1
+                    },
+                    timeout=5.0
+                )
 
-            if response.status_code == 200:
-                data = response.json()
-                documents = data.get("documents", [])
-                if documents:
-                    station = documents[0]
-                    return {
-                        "name": station.get("place_name", "").replace("역", "") + "역",
-                        "distance": station.get("distance", ""),
-                        "x": station.get("x"),
-                        "y": station.get("y")
-                    }
+                if response.status_code == 200:
+                    data = response.json()
+                    documents = data.get("documents", [])
+                    if documents:
+                        place = documents[0]
+                        name = place.get("place_name", "")
+                        return {
+                            "name": name,
+                            "distance": place.get("distance", ""),
+                            "x": place.get("x"),
+                            "y": place.get("y")
+                        }
     except Exception:
         pass
 
@@ -814,7 +823,7 @@ def enrich_place_info(
     step_num: int = 1,
     prev_place: Optional[Dict] = None,
     is_course: bool = False,
-    nearest_subway: Optional[Dict] = None
+    nearest_landmark: Optional[Dict] = None
 ) -> Dict:
     """
     장소 정보에 추천 이유, 이동 방법, 알아야 할 것 추가
@@ -826,7 +835,7 @@ def enrich_place_info(
         step_num: 코스에서의 순서
         prev_place: 이전 장소 (코스일 때만)
         is_course: 코스 추천인지 여부
-        nearest_subway: 가장 가까운 지하철역 정보
+        nearest_landmark: 가장 가까운 랜드마크 (지하철역/버스터미널)
 
     Returns:
         강화된 장소 정보
@@ -870,15 +879,15 @@ def enrich_place_info(
         except (ValueError, TypeError):
             pass
 
-    # 단일 검색일 때: 가까운 지하철역에서의 거리
-    elif not is_course and nearest_subway:
+    # 단일 검색일 때: 가까운 랜드마크에서의 거리
+    elif not is_course and nearest_landmark:
         try:
-            station_name = nearest_subway.get("name", "")
-            station_dist = nearest_subway.get("distance", "")
-            if station_name and station_dist:
-                result["nearest_station"] = station_name
-                result["distance_from_station"] = f"{station_dist}m"
-                result["travel_tip"] = generate_travel_tip(station_dist)
+            landmark_name = nearest_landmark.get("name", "")
+            landmark_dist = nearest_landmark.get("distance", "")
+            if landmark_name and landmark_dist:
+                result["nearest_landmark"] = landmark_name
+                result["distance_from_landmark"] = f"{landmark_dist}m"
+                result["travel_tip"] = generate_travel_tip(landmark_dist)
         except (ValueError, TypeError):
             pass
 
@@ -957,17 +966,17 @@ async def get_smart_recommendation(
     if "error" in result:
         return result
 
-    # 장소에 강화된 정보 추가 (v3.4) + 지하철역 정보 (v3.6)
+    # 장소에 강화된 정보 추가 (v3.4) + 랜드마크 정보 (v3.6)
     places_with_links = []
     for i, place in enumerate(result.get("places", []), 1):
-        # 가장 가까운 지하철역 찾기
+        # 가장 가까운 랜드마크 찾기 (지하철역 > 버스터미널)
         place_x = place.get("x", "")
         place_y = place.get("y", "")
-        nearest_subway = None
+        nearest_landmark = None
         if place_x and place_y:
-            nearest_subway = await find_nearest_subway(place_x, place_y)
+            nearest_landmark = await find_nearest_landmark(place_x, place_y)
 
-        enriched = enrich_place_info(place, situation, time_of_day, i, nearest_subway=nearest_subway)
+        enriched = enrich_place_info(place, situation, time_of_day, i, nearest_landmark=nearest_landmark)
         places_with_links.append(enriched)
 
     # 결과 구성
