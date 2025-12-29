@@ -1,17 +1,18 @@
-# Weather Life MCP v2.5
+# Weather Life MCP v3.2
 
 <div align="center">
 
 ![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-blue?style=for-the-badge)
 ![Railway](https://img.shields.io/badge/Railway-Deployed-success?style=for-the-badge&logo=railway)
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Tools](https://img.shields.io/badge/Tools-36개-orange?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-### **"오늘 뭐하면 좋을까?" 한 마디로 끝!**
+### **"홍대에서 데이트 뭐하지?" 한 마디로 끝!**
 
-날씨 + 미세먼지 + 옷차림 + **한국인만을 위한 생활지수** + **과학적 건강지수** MCP 서버
+날씨 + 미세먼지 + **카카오맵 연동** + **상황별 추천** + **전국 지원** MCP 서버
 
-[데모 사용하기](#-빠른-시작) | [API 문서](docs/API.md) | [사용 예시](docs/EXAMPLES.md)
+[데모 사용하기](#-빠른-시작) | [API 문서](docs/API.md) | [PlayMCP 등록](docs/PLAYMCP_SUBMIT.md)
 
 ---
 
@@ -43,11 +44,14 @@
 | **낚시지수** | 낚시 적합도 | **기압변화** 기반 분석 (v2.5 NEW!) |
 | **골프지수** | 골프 라운딩 | **바람/볼비행** 영향 (v2.5 NEW!) |
 | **러닝지수** | 야외 러닝 | **열지수/AQI** 통합 (v2.5 NEW!) |
-| **바베큐지수** | 야외 그릴링 | **화재안전/바람** (v2.5 NEW!) |
+| **바베큐지수** | 야외 그릴링 | **화재안전/바람** (v2.5) |
+| **전국 장소검색** | 카카오맵 연동 | **전국 어디든 맛집/카페** (v3.2 NEW!) |
+| **상황별 추천** | 혼자/친구/데이트/가족 | **시간대 자동감지** (v3.2 NEW!) |
+| **길찾기 링크** | 카카오맵 내비 | **자동차/대중교통/도보** (v3.2 NEW!) |
 
 > **단순 날씨 조회가 아닌, 한국인의 생활 패턴에 맞춘 "활동 기반 추천"**
 >
-> **v2.5 신규: 드라이브/캠핑/낚시/골프/러닝/바베큐 - 레저/스포츠 지수 대폭 강화!**
+> **v3.2 신규: 카카오맵 연동 + 상황별 추천 + 전국 동적 좌표 지원!**
 
 ---
 
