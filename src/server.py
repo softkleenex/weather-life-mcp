@@ -4,12 +4,17 @@ Weather Life MCP 서버 v3.1
 
 PlayMCP 공모전 (MCP Player 10) 출품작
 
+v3.3 신규 기능 (날씨 연동 코스 추천):
+- 날씨 기반 코스 추천 (get_smart_course) - 비 오면 실내, 맑으면 야외
+- 하루 일정 계획 (plan_my_day) - 시간대별 동선 + 카카오맵 링크
+- 장소 URL 강조 - 모든 결과에 카카오맵 링크 명확 표시
+- 38개 도구로 확장!
+
 v3.2 신규 기능 (전국 지원 + 상황별 추천):
 - 전국 동적 좌표 조회 (Kakao Geocoding API)
 - 상황별 장소 추천 (get_place_recommendation) - 혼자/친구/데이트/가족/비즈니스
 - 시간대별 맞춤 추천 - 아침/점심/오후/저녁/심야 자동 감지
 - 자연어 추천 (whats_good_here) - "여기서 뭐하면 좋아?"
-- 36개 도구로 확장!
 
 v3.1 신규 기능 (Kakao Maps API 연동):
 - 주변 장소 검색 (search_nearby_places) - 전국 어디든!
@@ -127,6 +132,7 @@ from src.kakao_map_api import (
     get_location_coordinates,
     get_location_coordinates_async,
     get_smart_recommendation,
+    get_weather_based_course,
     CATEGORY_CODES,
     SITUATION_CATEGORIES,
     TIME_RECOMMENDATIONS,
@@ -1865,6 +1871,160 @@ async def whats_good_here(
     return result
 
 
+@mcp.tool()
+async def get_smart_course(
+    location: str = "서울",
+    situation: str = "데이트"
+) -> dict:
+    """
+    현재 날씨를 분석해서 최적의 코스를 추천합니다! (A→B→C 동선)
+    비 오면 실내 위주, 맑으면 야외 포함! 날씨 걱정 없이 계획하세요.
+
+    사용 예시:
+    - "홍대 데이트 코스 짜줘"
+    - "강남에서 친구랑 뭐하지?"
+    - "제주도 가족 코스 추천"
+
+    Args:
+        location: 지역 (전국 어디든! 예: "홍대", "강남", "제주")
+        situation: 상황
+            - 데이트: 카페 → 전시회/공원 → 레스토랑
+            - 친구: 카페 → 볼링장/맛집 → 술집
+            - 가족: 카페 → 박물관/키즈카페 → 식당
+            - 혼자: 카페 → 서점/산책 → 맛집
+
+    Returns:
+        날씨 기반 3단계 코스 (각 장소 카카오맵 링크 포함)
+    """
+    # 현재 날씨 조회
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+
+    # 날씨 정보 추출
+    sky = "맑음"
+    rain_prob = 0
+    temperature = 20
+
+    if "error" not in weather:
+        current = weather.get("current", {})
+        temperature = current.get("temperature", 20)
+
+    if "error" not in forecast:
+        summary = forecast.get("today_summary", {})
+        rain_prob = summary.get("precipitation_probability", 0)
+        sky = summary.get("sky", "맑음")
+
+    # 날씨 기반 코스 추천
+    result = await get_weather_based_course(
+        location=location,
+        situation=situation,
+        weather_sky=sky,
+        rain_prob=rain_prob,
+        temperature=temperature,
+    )
+
+    return result
+
+
+@mcp.tool()
+async def plan_my_day(
+    location: str = "서울",
+    with_whom: str = "혼자",
+    include_meal: bool = True
+) -> dict:
+    """
+    오늘 하루 일정을 자동으로 계획해드립니다!
+    현재 시간과 날씨를 분석해서 최적의 동선을 제안합니다.
+
+    사용 예시:
+    - "오늘 홍대에서 하루 계획 세워줘"
+    - "친구랑 강남에서 뭐할지 일정 짜줘"
+    - "데이트 코스 전체 계획해줘"
+
+    Args:
+        location: 지역 (전국 어디든!)
+        with_whom: 누구랑? (혼자/친구/데이트/가족)
+        include_meal: 식사 포함 여부 (기본: True)
+
+    Returns:
+        시간대별 일정 + 각 장소 카카오맵 링크
+    """
+    from src.kakao_map_api import get_korea_time
+
+    # 상황 매핑
+    situation_map = {
+        "혼자": "혼자", "친구": "친구", "데이트": "데이트", "가족": "가족",
+        "여친": "데이트", "남친": "데이트", "연인": "데이트",
+    }
+    situation = situation_map.get(with_whom, "혼자")
+
+    # 현재 날씨 조회
+    weather = await cached_get_weather(location)
+    forecast = await cached_get_forecast(location)
+
+    sky = "맑음"
+    rain_prob = 0
+    temperature = 20
+
+    if "error" not in weather:
+        temperature = weather.get("current", {}).get("temperature", 20)
+
+    if "error" not in forecast:
+        summary = forecast.get("today_summary", {})
+        rain_prob = summary.get("precipitation_probability", 0)
+        sky = summary.get("sky", "맑음")
+
+    # 코스 추천
+    course_result = await get_weather_based_course(
+        location=location,
+        situation=situation,
+        weather_sky=sky,
+        rain_prob=rain_prob,
+        temperature=temperature,
+    )
+
+    if "error" in course_result:
+        return course_result
+
+    # 시간대 계산
+    now = get_korea_time()
+    hour = now.hour
+
+    # 일정에 시간 추가
+    schedule = []
+    time_slots = []
+
+    if hour < 11:
+        time_slots = ["10:00", "12:00", "14:00"]
+    elif hour < 14:
+        time_slots = ["14:00", "16:00", "18:00"]
+    elif hour < 17:
+        time_slots = ["17:00", "19:00", "21:00"]
+    else:
+        time_slots = ["지금", "2시간 후", "저녁"]
+
+    for i, step in enumerate(course_result.get("course", [])):
+        step["suggested_time"] = time_slots[i] if i < len(time_slots) else ""
+        schedule.append(step)
+
+    return {
+        "location": location,
+        "with_whom": with_whom,
+        "situation": situation,
+        "current_time": now.strftime("%H:%M"),
+        "weather": {
+            "sky": sky,
+            "temperature": temperature,
+            "rain_prob": rain_prob,
+            "is_outdoor_ok": course_result.get("weather", {}).get("is_outdoor_ok", True),
+            "warning": course_result.get("weather", {}).get("warning"),
+        },
+        "schedule": schedule,
+        "course_summary": course_result.get("course_summary", ""),
+        "tip": "각 장소의 카카오맵 링크로 상세 정보와 길찾기를 확인하세요!",
+    }
+
+
 # =============================================================================
 # Resources
 # =============================================================================
@@ -2005,10 +2165,11 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "weather-life-mcp",
-        "version": "3.2.0",
-        "tools": 36,
-        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant", "get_place_recommendation", "whats_good_here"],
-        "v3.2_features": ["nationwide_support", "dynamic_geocoding", "situation_recommendation", "time_based_recommendation", "get_place_recommendation", "whats_good_here"],
+        "version": "3.3.0",
+        "tools": 38,
+        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant", "get_place_recommendation", "whats_good_here", "get_smart_course", "plan_my_day"],
+        "v3.3_features": ["weather_based_course", "get_smart_course", "plan_my_day", "kakao_map_url_highlight"],
+        "v3.2_features": ["nationwide_support", "dynamic_geocoding", "situation_recommendation", "time_based_recommendation"],
         "v3.1_features": ["kakao_maps_api", "search_nearby_places", "get_directions_link", "search_restaurant"],
         "v3.0_features": ["date_course", "recommended_spots", "spots_database"],
         "v2.5_features": ["drive_index", "camping_index", "fishing_index", "golf_index", "running_index", "bbq_index"],

@@ -662,6 +662,20 @@ async def get_smart_recommendation(
     if "error" in result:
         return result
 
+    # 장소에 카카오맵 링크 강조 추가
+    places_with_links = []
+    for i, place in enumerate(result.get("places", []), 1):
+        place_info = {
+            "순서": i,
+            "name": place.get("name", ""),
+            "address": place.get("address", ""),
+            "category": place.get("category", ""),
+            "phone": place.get("phone", ""),
+            "distance": place.get("distance", ""),
+            "kakao_map_url": place.get("place_url", ""),  # URL 강조
+        }
+        places_with_links.append(place_info)
+
     # 결과 구성
     return {
         "location": location,
@@ -672,7 +686,131 @@ async def get_smart_recommendation(
         "weather": weather or "정보없음",
         "weather_tip": weather_data["tip"] if weather_data else None,
         "recommended_categories": keywords[:5],
-        "places": result.get("places", []),
+        "places": places_with_links,
         "total_found": result.get("total_count", 0),
         "search_keyword": search_keyword,
+        "tip": f"장소를 클릭하면 카카오맵에서 상세 정보를 볼 수 있어요!",
+    }
+
+
+async def get_weather_based_course(
+    location: str,
+    situation: str = "데이트",
+    weather_sky: str = "",
+    rain_prob: int = 0,
+    temperature: float = 20,
+) -> Dict:
+    """
+    날씨 기반 코스 추천 (A→B→C 동선)
+
+    Args:
+        location: 지역명
+        situation: 상황 (혼자, 친구, 데이트, 가족)
+        weather_sky: 하늘 상태 (맑음, 구름많음, 흐림)
+        rain_prob: 강수확률 (0-100)
+        temperature: 현재 기온
+
+    Returns:
+        날씨 기반 코스 추천 (순서대로)
+    """
+    # 좌표 조회
+    coords = await get_location_coordinates_async(location)
+    if not coords:
+        return {"error": f"지역을 찾을 수 없습니다: {location}"}
+
+    x, y = coords
+
+    # 날씨 기반 실내/야외 판단
+    is_outdoor_ok = True
+    weather_warning = None
+
+    if rain_prob >= 50:
+        is_outdoor_ok = False
+        weather_warning = f"강수확률 {rain_prob}%! 실내 위주로 추천해요."
+    elif temperature < 0:
+        weather_warning = f"기온 {temperature}°C! 따뜻한 실내 위주로 추천해요."
+        is_outdoor_ok = False
+    elif temperature > 33:
+        weather_warning = f"기온 {temperature}°C! 에어컨 있는 실내 위주로 추천해요."
+        is_outdoor_ok = False
+    elif "흐림" in weather_sky:
+        weather_warning = "흐린 날씨네요. 실내/야외 모두 괜찮아요."
+
+    # 코스 구성 (3단계)
+    course_steps = []
+
+    # 1단계: 카페/브런치 (시작)
+    step1_keyword = f"{location} 카페" if is_outdoor_ok else f"{location} 북카페"
+    step1_result = await search_place_by_keyword(step1_keyword, x, y, 2000, 2, "accuracy")
+    if step1_result.get("places"):
+        place = step1_result["places"][0]
+        course_steps.append({
+            "step": 1,
+            "type": "시작",
+            "name": place.get("place_name", place.get("name", "")),
+            "address": place.get("road_address_name", place.get("address", "")),
+            "category": "카페/브런치",
+            "kakao_map_url": place.get("place_url", ""),
+            "tip": "여유롭게 대화하며 시작해요",
+        })
+
+    # 2단계: 메인 활동
+    if situation == "데이트":
+        step2_keyword = f"{location} 전시회" if not is_outdoor_ok else f"{location} 공원"
+    elif situation == "친구":
+        step2_keyword = f"{location} 볼링장" if not is_outdoor_ok else f"{location} 맛집"
+    elif situation == "가족":
+        step2_keyword = f"{location} 키즈카페" if not is_outdoor_ok else f"{location} 박물관"
+    else:
+        step2_keyword = f"{location} 서점" if not is_outdoor_ok else f"{location} 산책"
+
+    step2_result = await search_place_by_keyword(step2_keyword, x, y, 3000, 2, "accuracy")
+    if step2_result.get("places"):
+        place = step2_result["places"][0]
+        course_steps.append({
+            "step": 2,
+            "type": "메인",
+            "name": place.get("place_name", place.get("name", "")),
+            "address": place.get("road_address_name", place.get("address", "")),
+            "category": "메인 활동",
+            "kakao_map_url": place.get("place_url", ""),
+            "tip": "오늘의 하이라이트!",
+        })
+
+    # 3단계: 식사/마무리
+    hour = get_korea_time().hour
+    if 11 <= hour < 14:
+        step3_keyword = f"{location} 맛집 점심"
+    elif 17 <= hour < 21:
+        step3_keyword = f"{location} 레스토랑"
+    else:
+        step3_keyword = f"{location} 맛집"
+
+    step3_result = await search_place_by_keyword(step3_keyword, x, y, 3000, 2, "accuracy")
+    if step3_result.get("places"):
+        place = step3_result["places"][0]
+        course_steps.append({
+            "step": 3,
+            "type": "마무리",
+            "name": place.get("place_name", place.get("name", "")),
+            "address": place.get("road_address_name", place.get("address", "")),
+            "category": "식사",
+            "kakao_map_url": place.get("place_url", ""),
+            "tip": "맛있는 식사로 마무리!",
+        })
+
+    return {
+        "location": location,
+        "situation": situation,
+        "weather": {
+            "sky": weather_sky or "정보없음",
+            "rain_prob": rain_prob,
+            "temperature": temperature,
+            "is_outdoor_ok": is_outdoor_ok,
+            "warning": weather_warning,
+        },
+        "course": course_steps,
+        "course_summary": " → ".join([s["name"] for s in course_steps]),
+        "total_steps": len(course_steps),
+        "tip": "각 장소의 카카오맵 링크를 클릭하면 상세 정보와 길찾기를 할 수 있어요!",
     }
