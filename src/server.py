@@ -1,14 +1,24 @@
 """
-Weather Life MCP 서버 v3.1
+Weather Life MCP 서버 v3.5
 날씨 + 미세먼지 + 생활 도우미 + 한국 특화 + 건강 + 지도 MCP
 
 PlayMCP 공모전 (MCP Player 10) 출품작
 
+v3.5 신규 기능 (도구 통합 최적화):
+- 중복 도구 제거로 38개 → 32개 최적화
+- get_smart_course로 코스/일정 기능 통합
+- get_place_recommendation으로 장소 추천 통합
+
+v3.4 신규 기능 (장소 정보 강화 + 옷차림 세분화):
+- 장소 추천 이유 제공 (why_recommend)
+- 이동 방법 힌트 (how_to_get_there)
+- 알아야 할 것/팁 (notice, tip)
+- TPO별 옷차림 (출근/데이트/운동/캐주얼)
+- 날씨별 색상 추천
+
 v3.3 신규 기능 (날씨 연동 코스 추천):
 - 날씨 기반 코스 추천 (get_smart_course) - 비 오면 실내, 맑으면 야외
-- 하루 일정 계획 (plan_my_day) - 시간대별 동선 + 카카오맵 링크
 - 장소 URL 강조 - 모든 결과에 카카오맵 링크 명확 표시
-- 38개 도구로 확장!
 
 v3.2 신규 기능 (전국 지원 + 상황별 추천):
 - 전국 동적 좌표 조회 (Kakao Geocoding API)
@@ -464,44 +474,7 @@ async def should_i_go_out(location: str = "서울") -> dict:
     }
 
 
-@mcp.tool()
-async def get_weather_summary(location: str = "서울") -> str:
-    """
-    지역의 날씨를 간단하게 요약해서 알려줍니다.
-
-    Args:
-        location: 지역명 (예: "서울", "부산")
-
-    Returns:
-        날씨 요약 문장
-    """
-    weather_data = await cached_get_weather(location)
-    forecast_data = await cached_get_forecast(location)
-    air_data = await cached_get_air_quality(location)
-
-    # 기본 정보
-    temp = "알 수 없음"
-    sky = ""
-    precip = ""
-    pm_status = ""
-
-    if "error" not in weather_data:
-        temp = f"{weather_data['current'].get('temperature', '?')}°C"
-
-    if "error" not in forecast_data:
-        summary = forecast_data.get("today_summary", {})
-        sky = summary.get("sky", "")
-        if summary.get("precipitation_probability", 0) >= 50:
-            precip = f", 강수확률 {summary['precipitation_probability']}%"
-
-    if "error" not in air_data:
-        pm25 = air_data.get("pm25") or air_data.get("average", {}).get("pm25", {})
-        if isinstance(pm25, dict):
-            grade = pm25.get("grade", "")
-            if grade in ["나쁨", "매우나쁨"]:
-                pm_status = f", 초미세먼지 {grade}"
-
-    return f"{location} 현재 {temp}, {sky}{precip}{pm_status}"
+# get_weather_summary 제거됨 - get_weather 사용 권장 (v3.4)
 
 
 @mcp.tool()
@@ -604,29 +577,7 @@ async def get_weekly_forecast(location: str = "서울") -> dict:
 # =============================================================================
 
 
-@mcp.tool()
-async def get_life_index(location: str = "서울") -> dict:
-    """
-    생활기상지수를 종합 조회합니다.
-    자외선지수, 체감온도(여름), 꽃가루(봄/가을), 식중독지수를 한번에 확인할 수 있습니다.
-
-    Args:
-        location: 지역명 (예: "서울", "부산", "강남구")
-
-    Returns:
-        자외선지수, 체감온도, 꽃가루농도, 식중독지수 (계절에 따라 일부만 제공)
-    """
-    # 현재 날씨 데이터 가져오기 (체감온도/식중독 계산용)
-    weather_data = await cached_get_weather(location)
-
-    temp = None
-    humidity = None
-    if "error" not in weather_data:
-        temp = weather_data["current"].get("temperature")
-        humidity = weather_data["current"].get("humidity")
-
-    result = await get_all_life_indices(location, temp, humidity)
-    return result
+# get_life_index 제거됨 - 개별 지수 도구(get_uv_info 등) 사용 권장 (v3.4)
 
 
 @mcp.tool()
@@ -1476,104 +1427,15 @@ async def get_bbq_index(location: str = "서울") -> dict:
     return result
 
 
-@mcp.tool()
-async def what_should_i_do_today(location: str = "서울") -> dict:
-    """
-    오늘 뭐하면 좋을지 종합 추천합니다.
-    날씨를 분석하여 빨래, 등산, 피크닉, 세차 등 활동별 적합도를 비교해드립니다.
-    한 번의 질문으로 모든 활동을 비교할 수 있어요!
-
-    사용 예시: "오늘 뭐하면 좋을까?", "뭐하기 좋은 날이야?", "오늘 할 것 추천해줘"
-
-    Args:
-        location: 지역명
-
-    Returns:
-        활동별 적합도 점수, 베스트 활동 추천
-    """
-    weather_data = await _get_weather_data(location)
-    result = get_all_activity_recommendations(weather_data)
-    result["location"] = location
-
-    # 요약 메시지 생성
-    best = result.get("best_activity", {})
-    if best.get("score", 0) >= 70:
-        result["recommendation"] = f"오늘은 {_get_activity_korean_name(best['name'])} 하기 좋아요! ({best['score']}점)"
-    elif best.get("score", 0) >= 50:
-        result["recommendation"] = f"오늘은 {_get_activity_korean_name(best['name'])} 괜찮아요. ({best['score']}점)"
-    else:
-        result["recommendation"] = "오늘은 실내 활동이 좋겠어요."
-
-    return result
-
-
-def _get_activity_korean_name(activity: str) -> str:
-    """활동 영문명을 한글로 변환"""
-    names = {
-        "laundry": "빨래",
-        "hiking": "등산",
-        "picnic": "피크닉",
-        "car_wash": "세차",
-        "exercise": "운동",
-        "kimjang": "김장",
-        "drive": "드라이브",
-        "camping": "캠핑",
-        "fishing": "낚시",
-        "golf": "골프",
-        "running": "러닝",
-        "bbq": "바베큐",
-        "date": "데이트",
-    }
-    return names.get(activity, activity)
+# what_should_i_do_today 제거됨 - get_smart_course 또는 개별 활동지수 사용 권장 (v3.4)
 
 
 # =============================================================================
-# v3.0 신규: 데이트 코스 & 장소 추천
+# v3.0 신규: 장소 추천 (카카오맵 연동)
 # =============================================================================
 
 
-@mcp.tool()
-async def get_date_course(location: str = "서울", style: str = "romantic") -> dict:
-    """
-    날씨 기반 데이트 코스를 추천합니다.
-    날씨, 미세먼지, 기온을 분석하여 최적의 데이트 코스와 장소를 추천해드립니다.
-
-    사용 예시: "오늘 데이트 어디 가?", "여친이랑 뭐하면 좋을까?", "맛집 데이트 추천해줘"
-
-    Args:
-        location: 지역명 (예: 서울, 강남구)
-        style: 데이트 스타일
-            - romantic: 로맨틱한 분위기 (기본값)
-            - active: 활동적인 데이트
-            - cultural: 문화/예술 데이트
-            - food: 맛집 투어
-
-    Returns:
-        데이트 적합도, 추천 코스, 장소별 정보
-    """
-    weather = await cached_get_weather(location)
-    air = await cached_get_air_quality(location)
-
-    if "error" in weather:
-        return {"error": weather["error"], "location": location}
-
-    # 날씨 데이터 구성
-    weather_data = {
-        "temperature": weather.get("current_weather", {}).get("temperature", 20),
-        "humidity": weather.get("current_weather", {}).get("humidity", 50),
-        "rain_prob": weather.get("today_summary", {}).get("precipitation_probability", 0),
-        "sky": weather.get("today_summary", {}).get("sky", "맑음"),
-    }
-
-    # 대기질 데이터
-    air_data = {}
-    if air and "error" not in air:
-        air_data = air
-
-    result = calculate_date_course(weather_data, air_data, style)
-    result["location"] = location
-
-    return result
+# get_date_course 제거됨 - get_smart_course 사용 권장 (v3.4)
 
 
 @mcp.tool()
@@ -1845,71 +1707,7 @@ async def get_place_recommendation(
     return result
 
 
-@mcp.tool()
-async def whats_good_here(
-    location: str,
-    with_whom: str = "",
-    when: str = ""
-) -> dict:
-    """
-    "여기서 뭐하면 좋아?" 한 마디로 상황에 맞는 장소를 추천받으세요!
-    전국 어디든 지원! 자연어로 편하게 물어보세요.
-
-    사용 예시:
-    - "홍대에서 친구랑 저녁에 뭐하지?"
-    - "제주도에서 혼자 뭐하면 좋아?"
-    - "강남에서 데이트 어디가?"
-    - "전주에서 가족이랑 점심?"
-
-    Args:
-        location: 어디서? (전국 어디든! 예: "홍대", "제주", "부산 해운대")
-        with_whom: 누구랑? (혼자/친구/데이트/가족/비즈니스, 비어있으면 "혼자")
-        when: 언제? (아침/점심/오후/저녁/심야, 비어있으면 현재 시간)
-
-    Returns:
-        맞춤 장소 추천 + 분위기 + 팁
-    """
-    # 상황 매핑
-    situation_map = {
-        "": "혼자",
-        "혼자": "혼자",
-        "나홀로": "혼자",
-        "솔로": "혼자",
-        "친구": "친구",
-        "친구들": "친구",
-        "동료": "친구",
-        "데이트": "데이트",
-        "연인": "데이트",
-        "커플": "데이트",
-        "여자친구": "데이트",
-        "남자친구": "데이트",
-        "여친": "데이트",
-        "남친": "데이트",
-        "가족": "가족",
-        "부모님": "가족",
-        "아이": "가족",
-        "아이들": "가족",
-        "비즈니스": "비즈니스",
-        "미팅": "비즈니스",
-        "회의": "비즈니스",
-        "접대": "비즈니스",
-    }
-
-    situation = situation_map.get(with_whom.lower().strip(), "혼자")
-
-    result = await get_smart_recommendation(
-        location=location,
-        situation=situation,
-        time_of_day=when,
-        count=5
-    )
-
-    # 더 친근한 응답 구성
-    if "error" not in result:
-        result["question"] = f"{location}에서 {with_whom or '혼자'} {when or '지금'} 뭐하면 좋을까?"
-        result["answer"] = f"{result.get('situation_description', '')} {result.get('time_vibe', '')}!"
-
-    return result
+# whats_good_here 제거됨 - get_place_recommendation 사용 권장 (v3.4)
 
 
 @mcp.tool()
@@ -1967,103 +1765,7 @@ async def get_smart_course(
     return result
 
 
-@mcp.tool()
-async def plan_my_day(
-    location: str = "서울",
-    with_whom: str = "혼자",
-    include_meal: bool = True
-) -> dict:
-    """
-    오늘 하루 일정을 자동으로 계획해드립니다!
-    현재 시간과 날씨를 분석해서 최적의 동선을 제안합니다.
-
-    사용 예시:
-    - "오늘 홍대에서 하루 계획 세워줘"
-    - "친구랑 강남에서 뭐할지 일정 짜줘"
-    - "데이트 코스 전체 계획해줘"
-
-    Args:
-        location: 지역 (전국 어디든!)
-        with_whom: 누구랑? (혼자/친구/데이트/가족)
-        include_meal: 식사 포함 여부 (기본: True)
-
-    Returns:
-        시간대별 일정 + 각 장소 카카오맵 링크
-    """
-    from src.kakao_map_api import get_korea_time
-
-    # 상황 매핑
-    situation_map = {
-        "혼자": "혼자", "친구": "친구", "데이트": "데이트", "가족": "가족",
-        "여친": "데이트", "남친": "데이트", "연인": "데이트",
-    }
-    situation = situation_map.get(with_whom, "혼자")
-
-    # 현재 날씨 조회
-    weather = await cached_get_weather(location)
-    forecast = await cached_get_forecast(location)
-
-    sky = "맑음"
-    rain_prob = 0
-    temperature = 20
-
-    if "error" not in weather:
-        temperature = weather.get("current", {}).get("temperature", 20)
-
-    if "error" not in forecast:
-        summary = forecast.get("today_summary", {})
-        rain_prob = summary.get("precipitation_probability", 0)
-        sky = summary.get("sky", "맑음")
-
-    # 코스 추천
-    course_result = await get_weather_based_course(
-        location=location,
-        situation=situation,
-        weather_sky=sky,
-        rain_prob=rain_prob,
-        temperature=temperature,
-    )
-
-    if "error" in course_result:
-        return course_result
-
-    # 시간대 계산
-    now = get_korea_time()
-    hour = now.hour
-
-    # 일정에 시간 추가
-    schedule = []
-    time_slots = []
-
-    if hour < 11:
-        time_slots = ["10:00", "12:00", "14:00"]
-    elif hour < 14:
-        time_slots = ["14:00", "16:00", "18:00"]
-    elif hour < 17:
-        time_slots = ["17:00", "19:00", "21:00"]
-    else:
-        time_slots = ["지금", "2시간 후", "저녁"]
-
-    for i, step in enumerate(course_result.get("course", [])):
-        step["suggested_time"] = time_slots[i] if i < len(time_slots) else ""
-        schedule.append(step)
-
-    return {
-        "location": location,
-        "with_whom": with_whom,
-        "situation": situation,
-        "current_time": now.strftime("%H:%M"),
-        "weather": {
-            "sky": sky,
-            "temperature": temperature,
-            "rain_prob": rain_prob,
-            "is_outdoor_ok": course_result.get("weather", {}).get("is_outdoor_ok", True),
-            "warning": course_result.get("weather", {}).get("warning"),
-        },
-        "schedule": schedule,
-        "course_summary": course_result.get("course_summary", ""),
-        "tip": "각 장소의 카카오맵 링크로 상세 정보와 길찾기를 확인하세요!",
-    }
+# plan_my_day 제거됨 - get_smart_course 사용 권장 (v3.4)
 
 
 # =============================================================================
@@ -2206,11 +1908,12 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "weather-life-mcp",
-        "version": "3.4.0",
-        "tools": 38,
-        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant", "get_place_recommendation", "whats_good_here", "get_smart_course", "plan_my_day"],
+        "version": "3.5.0",
+        "tools": 32,
+        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant", "get_place_recommendation", "get_smart_course"],
+        "v3.5_features": ["tool_consolidation_38_to_32", "removed_duplicates"],
         "v3.4_features": ["place_info_enriched", "why_recommend", "how_to_get_there", "notice", "hours_info", "outfit_tpo", "outfit_colors"],
-        "v3.3_features": ["weather_based_course", "get_smart_course", "plan_my_day", "kakao_map_url_highlight"],
+        "v3.3_features": ["weather_based_course", "get_smart_course", "kakao_map_url_highlight"],
         "v3.2_features": ["nationwide_support", "dynamic_geocoding", "situation_recommendation", "time_based_recommendation"],
         "v3.1_features": ["kakao_maps_api", "search_nearby_places", "get_directions_link", "search_restaurant"],
         "v3.0_features": ["date_course", "recommended_spots", "spots_database"],
