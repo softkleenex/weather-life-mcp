@@ -454,7 +454,7 @@ KOREA_COORDINATES = {
 
 
 def get_location_coordinates(location: str) -> tuple:
-    """지역명으로 좌표 반환 (한국 전체)"""
+    """지역명으로 좌표 반환 (캐시 조회, 동기)"""
     # 정확한 매칭
     if location in KOREA_COORDINATES:
         return KOREA_COORDINATES[location]
@@ -464,5 +464,201 @@ def get_location_coordinates(location: str) -> tuple:
         if key in location or location in key:
             return KOREA_COORDINATES[key]
 
-    # 기본값: 서울
+    # 못 찾으면 None (async 버전에서 API 호출)
+    return None
+
+
+async def get_location_coordinates_async(location: str) -> tuple:
+    """
+    지역명으로 좌표 반환 (전국 어디든 지원)
+    1. 캐시된 좌표 확인
+    2. 없으면 Kakao Geocoding API로 동적 조회
+    """
+    # 1. 캐시 확인
+    coords = get_location_coordinates(location)
+    if coords:
+        return coords
+
+    # 2. Kakao Geocoding API로 동적 조회
+    if not KAKAO_REST_API_KEY:
+        # API 키 없으면 서울 기본값
+        return KOREA_COORDINATES.get("서울")
+
+    result = await geocode(location)
+    if "error" not in result and result.get("x") and result.get("y"):
+        return (float(result["x"]), float(result["y"]))
+
+    # 3. 키워드 검색으로 시도
+    try:
+        search_result = await search_place_by_keyword(location, size=1)
+        if search_result.get("places"):
+            place = search_result["places"][0]
+            return (float(place["x"]), float(place["y"]))
+    except:
+        pass
+
+    # 4. 기본값: 서울
     return KOREA_COORDINATES.get("서울")
+
+
+# =============================================================================
+# 상황별 장소 추천 시스템
+# =============================================================================
+
+# 상황별 추천 카테고리
+SITUATION_CATEGORIES = {
+    "혼자": {
+        "keywords": ["카페", "서점", "독서실", "영화관", "미술관", "전시회", "공원"],
+        "description": "혼자만의 시간을 보내기 좋은 곳",
+    },
+    "친구": {
+        "keywords": ["맛집", "술집", "호프", "포차", "노래방", "볼링장", "방탈출", "보드게임카페"],
+        "description": "친구들과 즐기기 좋은 곳",
+    },
+    "데이트": {
+        "keywords": ["레스토랑", "카페", "영화관", "전시회", "야경", "루프탑", "와인바", "이자카야"],
+        "description": "연인과 로맨틱한 시간을 보내기 좋은 곳",
+    },
+    "가족": {
+        "keywords": ["한식", "뷔페", "키즈카페", "놀이공원", "동물원", "박물관", "수족관"],
+        "description": "가족과 함께하기 좋은 곳",
+    },
+    "비즈니스": {
+        "keywords": ["레스토랑", "호텔", "카페", "회의실", "코워킹"],
+        "description": "비즈니스 미팅에 적합한 곳",
+    },
+}
+
+# 시간대별 추천
+TIME_RECOMMENDATIONS = {
+    "아침": {
+        "hours": (6, 10),
+        "keywords": ["브런치", "모닝커피", "베이커리", "아침식사"],
+        "vibe": "상쾌한 하루의 시작",
+    },
+    "점심": {
+        "hours": (11, 14),
+        "keywords": ["맛집", "런치", "한식", "일식", "중식"],
+        "vibe": "든든한 점심 식사",
+    },
+    "오후": {
+        "hours": (14, 17),
+        "keywords": ["카페", "디저트", "전시회", "공원", "산책"],
+        "vibe": "여유로운 오후 시간",
+    },
+    "저녁": {
+        "hours": (17, 21),
+        "keywords": ["레스토랑", "고기", "파스타", "회", "이자카야"],
+        "vibe": "분위기 있는 저녁 식사",
+    },
+    "심야": {
+        "hours": (21, 6),
+        "keywords": ["술집", "호프", "포차", "야식", "라멘", "24시"],
+        "vibe": "밤을 즐기는 시간",
+    },
+}
+
+# 날씨별 추천
+WEATHER_RECOMMENDATIONS = {
+    "맑음": {
+        "outdoor": True,
+        "keywords": ["공원", "산책", "테라스", "루프탑", "야외"],
+        "tip": "야외 활동하기 좋은 날씨예요!",
+    },
+    "흐림": {
+        "outdoor": True,
+        "keywords": ["카페", "전시회", "영화관", "쇼핑몰"],
+        "tip": "실내외 모두 좋아요",
+    },
+    "비": {
+        "outdoor": False,
+        "keywords": ["실내", "영화관", "쇼핑몰", "카페", "북카페"],
+        "tip": "실내 활동을 추천해요",
+    },
+    "눈": {
+        "outdoor": False,
+        "keywords": ["따뜻한", "국물", "찌개", "라멘", "카페"],
+        "tip": "따뜻한 곳에서 포근하게!",
+    },
+}
+
+
+async def get_smart_recommendation(
+    location: str,
+    situation: str = "혼자",
+    time_of_day: str = "",
+    weather: str = "",
+    count: int = 5
+) -> Dict:
+    """
+    상황/시간/날씨에 맞는 스마트 장소 추천
+
+    Args:
+        location: 지역명 (전국 어디든)
+        situation: 상황 (혼자, 친구, 데이트, 가족, 비즈니스)
+        time_of_day: 시간대 (아침, 점심, 오후, 저녁, 심야) - 비어있으면 현재 시간
+        weather: 날씨 (맑음, 흐림, 비, 눈) - 비어있으면 무시
+        count: 결과 개수
+
+    Returns:
+        상황에 맞는 장소 추천
+    """
+    from datetime import datetime
+
+    # 좌표 조회 (전국 지원)
+    coords = await get_location_coordinates_async(location)
+    if not coords:
+        return {"error": f"지역을 찾을 수 없습니다: {location}"}
+
+    x, y = coords
+
+    # 상황별 키워드
+    situation_data = SITUATION_CATEGORIES.get(situation, SITUATION_CATEGORIES["혼자"])
+    keywords = situation_data["keywords"].copy()
+
+    # 시간대 자동 감지
+    if not time_of_day:
+        hour = datetime.now().hour
+        for name, data in TIME_RECOMMENDATIONS.items():
+            start, end = data["hours"]
+            if start <= hour < end or (start > end and (hour >= start or hour < end)):
+                time_of_day = name
+                break
+        if not time_of_day:
+            time_of_day = "오후"
+
+    time_data = TIME_RECOMMENDATIONS.get(time_of_day, TIME_RECOMMENDATIONS["오후"])
+
+    # 날씨 키워드 추가
+    weather_data = None
+    if weather:
+        weather_data = WEATHER_RECOMMENDATIONS.get(weather)
+        if weather_data and not weather_data["outdoor"]:
+            # 비/눈일 때 실내 위주
+            keywords = [k for k in keywords if k not in ["공원", "산책", "야외", "테라스"]]
+
+    # 검색 키워드 조합 (상황 + 시간대)
+    search_keyword = f"{location} {keywords[0]}"
+    if time_of_day in ["아침", "점심", "저녁"]:
+        search_keyword = f"{location} {time_data['keywords'][0]}"
+
+    # 장소 검색
+    result = await search_place_by_keyword(search_keyword, x, y, 3000, count, "accuracy")
+
+    if "error" in result:
+        return result
+
+    # 결과 구성
+    return {
+        "location": location,
+        "situation": situation,
+        "situation_description": situation_data["description"],
+        "time_of_day": time_of_day,
+        "time_vibe": time_data["vibe"],
+        "weather": weather or "정보없음",
+        "weather_tip": weather_data["tip"] if weather_data else None,
+        "recommended_categories": keywords[:5],
+        "places": result.get("places", []),
+        "total_found": result.get("total_count", 0),
+        "search_keyword": search_keyword,
+    }

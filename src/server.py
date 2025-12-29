@@ -4,12 +4,17 @@ Weather Life MCP 서버 v3.1
 
 PlayMCP 공모전 (MCP Player 10) 출품작
 
+v3.2 신규 기능 (전국 지원 + 상황별 추천):
+- 전국 동적 좌표 조회 (Kakao Geocoding API)
+- 상황별 장소 추천 (get_place_recommendation) - 혼자/친구/데이트/가족/비즈니스
+- 시간대별 맞춤 추천 - 아침/점심/오후/저녁/심야 자동 감지
+- 자연어 추천 (whats_good_here) - "여기서 뭐하면 좋아?"
+- 36개 도구로 확장!
+
 v3.1 신규 기능 (Kakao Maps API 연동):
-- 주변 장소 검색 (search_nearby_places) - 키워드/카테고리 검색
+- 주변 장소 검색 (search_nearby_places) - 전국 어디든!
 - 길찾기 링크 (get_directions_link) - 자동차/대중교통/도보/자전거
 - 맛집 검색 (search_restaurant) - 지역별/음식종류별 검색
-- 한국 전역 100개+ 지역 좌표 지원
-- 34개 도구로 확장!
 
 v3.0 신규 기능 (장소 추천 시스템):
 - 데이트 코스 추천 (날씨 기반)
@@ -120,7 +125,11 @@ from src.kakao_map_api import (
     geocode,
     get_directions_url,
     get_location_coordinates,
+    get_location_coordinates_async,
+    get_smart_recommendation,
     CATEGORY_CODES,
+    SITUATION_CATEGORIES,
+    TIME_RECOMMENDATIONS,
 )
 from functools import lru_cache
 from datetime import datetime, timedelta
@@ -1614,21 +1623,21 @@ async def search_nearby_places(
 ) -> dict:
     """
     주변 장소를 검색합니다. (Kakao Maps API)
-    맛집, 카페, 관광지 등 키워드로 검색하거나 카테고리별로 검색할 수 있습니다.
+    전국 어디든 지원! 맛집, 카페, 관광지 등 키워드로 검색할 수 있습니다.
 
-    사용 예시: "강남역 근처 맛집", "홍대 카페 추천", "서울역 주변 약국"
+    사용 예시: "강남역 근처 맛집", "전주 한옥마을 카페", "부산 해운대 횟집"
 
     Args:
         keyword: 검색 키워드 (예: "맛집", "카페", "편의점", "주차장")
-        location: 검색 중심 지역 (예: "서울", "강남구", "홍대입구")
+        location: 검색 중심 지역 (전국 어디든! 예: "서울", "전주", "속초", "을왕리")
         radius: 검색 반경 (미터, 기본값: 2000, 최대: 20000)
         count: 결과 개수 (기본값: 5, 최대: 15)
 
     Returns:
         장소 목록 (이름, 주소, 전화번호, 거리, 카카오맵 링크)
     """
-    # 지역 좌표 조회
-    coords = get_location_coordinates(location)
+    # 지역 좌표 조회 (전국 지원)
+    coords = await get_location_coordinates_async(location)
     if not coords:
         return {"error": f"지역을 찾을 수 없습니다: {location}"}
 
@@ -1658,13 +1667,13 @@ async def get_directions_link(
 ) -> dict:
     """
     출발지에서 목적지까지 길찾기 링크를 생성합니다. (Kakao Maps)
-    자동차, 대중교통, 도보, 자전거 경로를 안내합니다.
+    전국 어디든 지원! 자동차, 대중교통, 도보, 자전거 경로를 안내합니다.
 
-    사용 예시: "서울역에서 강남역까지", "홍대에서 이태원 가는 길", "집에서 회사까지 대중교통"
+    사용 예시: "서울역에서 부산역까지", "전주에서 군산 가는 길", "속초에서 양양까지"
 
     Args:
-        origin: 출발지 (예: "서울역", "강남구", "홍대입구")
-        destination: 목적지 (예: "강남역", "이태원", "서울시청")
+        origin: 출발지 (전국 어디든! 예: "서울역", "전주 한옥마을", "해운대")
+        destination: 목적지 (전국 어디든! 예: "강남역", "경주 불국사", "제주공항")
         mode: 이동 수단
             - car: 자동차 (기본값)
             - transit: 대중교통
@@ -1674,23 +1683,15 @@ async def get_directions_link(
     Returns:
         카카오맵 길찾기 URL, 이동 수단 정보
     """
-    # 출발지 좌표
-    origin_coords = get_location_coordinates(origin)
+    # 출발지 좌표 (전국 지원)
+    origin_coords = await get_location_coordinates_async(origin)
     if not origin_coords:
-        # 주소 검색 시도
-        geo_result = await geocode(origin)
-        if "error" in geo_result:
-            return {"error": f"출발지를 찾을 수 없습니다: {origin}"}
-        origin_coords = (float(geo_result["x"]), float(geo_result["y"]))
+        return {"error": f"출발지를 찾을 수 없습니다: {origin}"}
 
-    # 목적지 좌표
-    dest_coords = get_location_coordinates(destination)
+    # 목적지 좌표 (전국 지원)
+    dest_coords = await get_location_coordinates_async(destination)
     if not dest_coords:
-        # 주소 검색 시도
-        geo_result = await geocode(destination)
-        if "error" in geo_result:
-            return {"error": f"목적지를 찾을 수 없습니다: {destination}"}
-        dest_coords = (float(geo_result["x"]), float(geo_result["y"]))
+        return {"error": f"목적지를 찾을 수 없습니다: {destination}"}
 
     # 길찾기 URL 생성
     result = get_directions_url(
@@ -1714,20 +1715,20 @@ async def search_restaurant(
 ) -> dict:
     """
     맛집/음식점을 검색합니다. (Kakao Maps API)
-    지역과 음식 종류로 맛집을 찾아드립니다.
+    전국 어디든 지원! 지역과 음식 종류로 맛집을 찾아드립니다.
 
-    사용 예시: "강남 맛집", "홍대 파스타", "이태원 멕시칸"
+    사용 예시: "전주 비빔밥", "속초 물회", "제주 흑돼지", "부산 밀면"
 
     Args:
-        location: 검색 지역 (예: "강남", "홍대", "이태원")
-        cuisine: 음식 종류 (예: "한식", "파스타", "초밥", 빈 값이면 전체)
+        location: 검색 지역 (전국 어디든! 예: "전주", "속초", "제주", "부산")
+        cuisine: 음식 종류 (예: "한식", "회", "고기", 빈 값이면 전체)
         count: 결과 개수 (기본값: 5)
 
     Returns:
         맛집 목록 (이름, 주소, 카테고리, 카카오맵 링크)
     """
-    # 지역 좌표 조회
-    coords = get_location_coordinates(location)
+    # 지역 좌표 조회 (전국 지원)
+    coords = await get_location_coordinates_async(location)
     if not coords:
         return {"error": f"지역을 찾을 수 없습니다: {location}"}
 
@@ -1747,6 +1748,119 @@ async def search_restaurant(
     result["search_location"] = location
     if cuisine:
         result["cuisine"] = cuisine
+
+    return result
+
+
+@mcp.tool()
+async def get_place_recommendation(
+    location: str = "서울",
+    situation: str = "혼자",
+    time_of_day: str = "",
+    count: int = 5
+) -> dict:
+    """
+    상황/시간에 맞는 장소를 스마트하게 추천합니다.
+    전국 어디든 지원! 혼자, 친구, 데이트, 가족 등 상황별 맞춤 추천!
+
+    사용 예시:
+    - "혼자 갈만한 곳" → situation="혼자"
+    - "친구랑 저녁에 뭐하지?" → situation="친구", time_of_day="저녁"
+    - "데이트 장소 추천해줘" → situation="데이트"
+    - "가족이랑 점심 먹을 곳" → situation="가족", time_of_day="점심"
+
+    Args:
+        location: 지역 (전국 어디든! 예: "강남", "전주", "해운대", "제주")
+        situation: 상황
+            - 혼자: 카페, 서점, 영화관, 미술관 추천
+            - 친구: 맛집, 술집, 노래방, 방탈출 추천
+            - 데이트: 레스토랑, 루프탑, 와인바 추천
+            - 가족: 한식, 뷔페, 박물관, 키즈카페 추천
+            - 비즈니스: 호텔, 레스토랑, 회의실 추천
+        time_of_day: 시간대 (비어있으면 현재 시간 자동 감지)
+            - 아침 (6-10시): 브런치, 베이커리
+            - 점심 (11-14시): 맛집, 런치
+            - 오후 (14-17시): 카페, 디저트
+            - 저녁 (17-21시): 레스토랑, 고기
+            - 심야 (21-6시): 술집, 야식
+        count: 결과 개수 (기본값: 5)
+
+    Returns:
+        상황에 맞는 장소 추천, 분위기 설명, 추천 카테고리
+    """
+    result = await get_smart_recommendation(
+        location=location,
+        situation=situation,
+        time_of_day=time_of_day,
+        count=count
+    )
+
+    return result
+
+
+@mcp.tool()
+async def whats_good_here(
+    location: str,
+    with_whom: str = "",
+    when: str = ""
+) -> dict:
+    """
+    "여기서 뭐하면 좋아?" 한 마디로 상황에 맞는 장소를 추천받으세요!
+    전국 어디든 지원! 자연어로 편하게 물어보세요.
+
+    사용 예시:
+    - "홍대에서 친구랑 저녁에 뭐하지?"
+    - "제주도에서 혼자 뭐하면 좋아?"
+    - "강남에서 데이트 어디가?"
+    - "전주에서 가족이랑 점심?"
+
+    Args:
+        location: 어디서? (전국 어디든! 예: "홍대", "제주", "부산 해운대")
+        with_whom: 누구랑? (혼자/친구/데이트/가족/비즈니스, 비어있으면 "혼자")
+        when: 언제? (아침/점심/오후/저녁/심야, 비어있으면 현재 시간)
+
+    Returns:
+        맞춤 장소 추천 + 분위기 + 팁
+    """
+    # 상황 매핑
+    situation_map = {
+        "": "혼자",
+        "혼자": "혼자",
+        "나홀로": "혼자",
+        "솔로": "혼자",
+        "친구": "친구",
+        "친구들": "친구",
+        "동료": "친구",
+        "데이트": "데이트",
+        "연인": "데이트",
+        "커플": "데이트",
+        "여자친구": "데이트",
+        "남자친구": "데이트",
+        "여친": "데이트",
+        "남친": "데이트",
+        "가족": "가족",
+        "부모님": "가족",
+        "아이": "가족",
+        "아이들": "가족",
+        "비즈니스": "비즈니스",
+        "미팅": "비즈니스",
+        "회의": "비즈니스",
+        "접대": "비즈니스",
+    }
+
+    situation = situation_map.get(with_whom.lower().strip(), "혼자")
+
+    result = await get_smart_recommendation(
+        location=location,
+        situation=situation,
+        time_of_day=when,
+        count=5
+    )
+
+    # 더 친근한 응답 구성
+    if "error" not in result:
+        result["question"] = f"{location}에서 {with_whom or '혼자'} {when or '지금'} 뭐하면 좋을까?"
+        result["answer"] = f"{result.get('situation_description', '')} {result.get('time_vibe', '')}!"
 
     return result
 
@@ -1891,10 +2005,11 @@ async def health_check(request):
     return JSONResponse({
         "status": "healthy",
         "service": "weather-life-mcp",
-        "version": "3.1.0",
-        "tools": 34,
-        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant"],
-        "v3.1_features": ["kakao_maps_api", "search_nearby_places", "get_directions_link", "search_restaurant", "100+_locations"],
+        "version": "3.2.0",
+        "tools": 36,
+        "features": ["weather", "weekly_forecast", "air_quality", "outfit", "life_index", "laundry", "hiking", "picnic", "car_wash", "exercise", "kimjang", "cold_flu_risk", "commute", "allergy", "migraine_risk", "sleep_quality", "photography", "joint_pain", "drive", "camping", "fishing", "golf", "running", "bbq", "date_course", "recommended_spots", "search_nearby_places", "get_directions_link", "search_restaurant", "get_place_recommendation", "whats_good_here"],
+        "v3.2_features": ["nationwide_support", "dynamic_geocoding", "situation_recommendation", "time_based_recommendation", "get_place_recommendation", "whats_good_here"],
+        "v3.1_features": ["kakao_maps_api", "search_nearby_places", "get_directions_link", "search_restaurant"],
         "v3.0_features": ["date_course", "recommended_spots", "spots_database"],
         "v2.5_features": ["drive_index", "camping_index", "fishing_index", "golf_index", "running_index", "bbq_index"],
         "v2.4_features": ["migraine_risk", "sleep_quality", "photography_index", "joint_pain_risk"],
