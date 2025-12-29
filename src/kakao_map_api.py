@@ -10,8 +10,29 @@ Kakao Maps REST API 연동 모듈 (v3.0)
 
 import os
 import httpx
+import math
 from typing import Optional, List, Dict
 from urllib.parse import quote, urlencode
+
+
+def calculate_distance_between_coords(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
+    """
+    두 좌표 간 거리 계산 (Haversine 공식)
+
+    Returns:
+        거리 (미터)
+    """
+    R = 6371000  # 지구 반지름 (미터)
+
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+
+    a = math.sin(delta_phi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
+    return int(R * c)
 
 # API 키
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "")
@@ -743,7 +764,9 @@ def enrich_place_info(
     place: Dict,
     situation: str = "혼자",
     time_of_day: str = "오후",
-    step_num: int = 1
+    step_num: int = 1,
+    prev_place: Optional[Dict] = None,
+    is_course: bool = False
 ) -> Dict:
     """
     장소 정보에 추천 이유, 이동 방법, 알아야 할 것 추가
@@ -753,39 +776,53 @@ def enrich_place_info(
         situation: 상황
         time_of_day: 시간대
         step_num: 코스에서의 순서
+        prev_place: 이전 장소 (코스일 때만)
+        is_course: 코스 추천인지 여부
 
     Returns:
         강화된 장소 정보
     """
     category = place.get("category", "")
-    distance = place.get("distance", "")
     place_url = place.get("place_url", place.get("kakao_map_url", ""))
 
     # 추천 이유 생성
     reason = generate_recommendation_reason(category, situation, time_of_day)
 
-    # 이동 방법 힌트
-    travel_tip = generate_travel_tip(distance)
-
     # 알아야 할 것
     notice_info = generate_notice(category)
 
-    return {
+    # 기본 결과
+    result = {
         "step": step_num,
         "name": place.get("place_name", place.get("name", "")),
         "address": place.get("road_address_name", place.get("address", "")),
         "category": category,
         "phone": place.get("phone", "카카오맵에서 확인"),
-        "distance": f"{distance}m" if distance else "",
         "kakao_map_url": place_url,
-
-        # 강화된 정보 (v3.4)
         "why_recommend": reason,
-        "how_to_get_there": travel_tip,
         "notice": notice_info["notice"],
         "tip": notice_info["tip"],
-        "hours_info": "운영시간은 카카오맵에서 확인하세요 →",
     }
+
+    # 코스일 때만 이동 정보 표시
+    if is_course and prev_place:
+        # 이전 장소 → 현재 장소 거리 계산
+        try:
+            prev_lat = float(prev_place.get("y", 0))
+            prev_lon = float(prev_place.get("x", 0))
+            curr_lat = float(place.get("y", 0))
+            curr_lon = float(place.get("x", 0))
+
+            if prev_lat and prev_lon and curr_lat and curr_lon:
+                dist = calculate_distance_between_coords(prev_lat, prev_lon, curr_lat, curr_lon)
+                prev_name = prev_place.get("place_name", prev_place.get("name", "이전 장소"))
+                result["from_prev_place"] = f"{prev_name}에서"
+                result["distance_from_prev"] = f"{dist}m"
+                result["travel_tip"] = generate_travel_tip(str(dist))
+        except (ValueError, TypeError):
+            pass
+
+    return result
 
 
 def get_current_time_of_day() -> str:
@@ -931,16 +968,18 @@ async def get_weather_based_course(
 
     # 코스 구성 (3단계) - 강화된 정보 포함
     course_steps = []
+    prev_place_raw = None  # 이전 장소 원본 데이터 (좌표 포함)
 
     # 1단계: 카페/브런치 (시작)
     step1_keyword = f"{location} 카페" if is_outdoor_ok else f"{location} 북카페"
     step1_result = await search_place_by_keyword(step1_keyword, x, y, 2000, 2, "accuracy")
     if step1_result.get("places"):
         place = step1_result["places"][0]
-        enriched = enrich_place_info(place, situation, time_of_day, 1)
+        enriched = enrich_place_info(place, situation, time_of_day, 1, is_course=True)
         enriched["type"] = "시작"
         enriched["course_tip"] = "여유롭게 대화하며 시작해요"
         course_steps.append(enriched)
+        prev_place_raw = place  # 다음 단계를 위해 저장
 
     # 2단계: 메인 활동
     if situation == "데이트":
@@ -955,10 +994,11 @@ async def get_weather_based_course(
     step2_result = await search_place_by_keyword(step2_keyword, x, y, 3000, 2, "accuracy")
     if step2_result.get("places"):
         place = step2_result["places"][0]
-        enriched = enrich_place_info(place, situation, time_of_day, 2)
+        enriched = enrich_place_info(place, situation, time_of_day, 2, prev_place=prev_place_raw, is_course=True)
         enriched["type"] = "메인"
         enriched["course_tip"] = "오늘의 하이라이트!"
         course_steps.append(enriched)
+        prev_place_raw = place  # 다음 단계를 위해 저장
 
     # 3단계: 식사/마무리
     hour = get_korea_time().hour
@@ -972,7 +1012,7 @@ async def get_weather_based_course(
     step3_result = await search_place_by_keyword(step3_keyword, x, y, 3000, 2, "accuracy")
     if step3_result.get("places"):
         place = step3_result["places"][0]
-        enriched = enrich_place_info(place, situation, time_of_day, 3)
+        enriched = enrich_place_info(place, situation, time_of_day, 3, prev_place=prev_place_raw, is_course=True)
         enriched["type"] = "마무리"
         enriched["course_tip"] = "맛있는 식사로 마무리!"
         course_steps.append(enriched)
