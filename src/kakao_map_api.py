@@ -583,6 +583,29 @@ WEATHER_RECOMMENDATIONS = {
 }
 
 
+def get_korea_time():
+    """한국 시간(KST) 반환"""
+    from datetime import datetime, timezone, timedelta
+    KST = timezone(timedelta(hours=9))
+    return datetime.now(KST)
+
+
+def get_current_time_of_day() -> str:
+    """현재 한국 시간 기준 시간대 반환"""
+    hour = get_korea_time().hour
+
+    if 6 <= hour < 10:
+        return "아침"
+    elif 10 <= hour < 14:
+        return "점심"
+    elif 14 <= hour < 17:
+        return "오후"
+    elif 17 <= hour < 21:
+        return "저녁"
+    else:  # 21-6시
+        return "심야"
+
+
 async def get_smart_recommendation(
     location: str,
     situation: str = "혼자",
@@ -596,15 +619,13 @@ async def get_smart_recommendation(
     Args:
         location: 지역명 (전국 어디든)
         situation: 상황 (혼자, 친구, 데이트, 가족, 비즈니스)
-        time_of_day: 시간대 (아침, 점심, 오후, 저녁, 심야) - 비어있으면 현재 시간
+        time_of_day: 시간대 (아침, 점심, 오후, 저녁, 심야) - 비어있으면 현재 한국 시간
         weather: 날씨 (맑음, 흐림, 비, 눈) - 비어있으면 무시
         count: 결과 개수
 
     Returns:
         상황에 맞는 장소 추천
     """
-    from datetime import datetime
-
     # 좌표 조회 (전국 지원)
     coords = await get_location_coordinates_async(location)
     if not coords:
@@ -616,16 +637,9 @@ async def get_smart_recommendation(
     situation_data = SITUATION_CATEGORIES.get(situation, SITUATION_CATEGORIES["혼자"])
     keywords = situation_data["keywords"].copy()
 
-    # 시간대 자동 감지
+    # 시간대 자동 감지 (한국 시간 기준)
     if not time_of_day:
-        hour = datetime.now().hour
-        for name, data in TIME_RECOMMENDATIONS.items():
-            start, end = data["hours"]
-            if start <= hour < end or (start > end and (hour >= start or hour < end)):
-                time_of_day = name
-                break
-        if not time_of_day:
-            time_of_day = "오후"
+        time_of_day = get_current_time_of_day()
 
     time_data = TIME_RECOMMENDATIONS.get(time_of_day, TIME_RECOMMENDATIONS["오후"])
 
