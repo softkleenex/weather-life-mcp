@@ -247,7 +247,8 @@ async def get_weather_forecast(location: str) -> dict:
     api = WeatherAPI()
     nx, ny = get_grid_coords(location)
 
-    forecast = await api.get_short_forecast(nx, ny)
+    # 3일치 예보를 위해 충분한 데이터 요청 (1000행)
+    forecast = await api.get_short_forecast(nx, ny, num_of_rows=1000)
 
     if "error" in forecast:
         return forecast
@@ -278,5 +279,5 @@ async def get_weather_forecast(location: str) -> dict:
             "precipitation_type": current_forecast.get("precipitation_type") if current_forecast else None,
             "precipitation_probability": current_forecast.get("precipitation_probability") if current_forecast else None,
         },
-        "forecasts": forecast["forecasts"][:24],  # 24시간 예보만
+        "forecasts": forecast["forecasts"],  # 3일치 전체 예보
     }
