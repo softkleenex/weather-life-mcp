@@ -146,11 +146,11 @@ class WeatherAPI:
                 elif category == "VVV":  # 남북바람성분
                     result["wind_v"] = float(value)
                 elif category == "REH":  # 습도
-                    result["humidity"] = int(value)
+                    result["humidity"] = int(float(value))
                 elif category == "PTY":  # 강수형태
                     result["precipitation_type"] = PTY_CODE.get(value, value)
                 elif category == "VEC":  # 풍향
-                    result["wind_direction"] = int(value)
+                    result["wind_direction"] = int(float(value))
                 elif category == "WSD":  # 풍속
                     result["wind_speed"] = float(value)
 
@@ -181,21 +181,21 @@ class WeatherAPI:
                 value = item["fcstValue"]
 
                 if category == "TMP":  # 기온
-                    forecasts[key]["temperature"] = int(value)
+                    forecasts[key]["temperature"] = int(float(value))
                 elif category == "SKY":  # 하늘상태
                     forecasts[key]["sky"] = SKY_CODE.get(value, value)
                 elif category == "PTY":  # 강수형태
                     forecasts[key]["precipitation_type"] = PTY_CODE.get(value, value)
                 elif category == "POP":  # 강수확률
-                    forecasts[key]["precipitation_probability"] = int(value)
+                    forecasts[key]["precipitation_probability"] = int(float(value))
                 elif category == "REH":  # 습도
-                    forecasts[key]["humidity"] = int(value)
+                    forecasts[key]["humidity"] = int(float(value))
                 elif category == "WSD":  # 풍속
                     forecasts[key]["wind_speed"] = float(value)
                 elif category == "TMN":  # 최저기온
-                    forecasts[key]["min_temperature"] = int(value)
+                    forecasts[key]["min_temperature"] = int(float(value))
                 elif category == "TMX":  # 최고기온
-                    forecasts[key]["max_temperature"] = int(value)
+                    forecasts[key]["max_temperature"] = int(float(value))
 
             # 리스트로 변환 및 정렬
             forecast_list = sorted(forecasts.values(), key=lambda x: f"{x['date']}{x['time']}")
