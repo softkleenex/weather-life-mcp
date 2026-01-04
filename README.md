@@ -233,6 +233,12 @@ https://web-production-19a3b.up.railway.app/mcp
 | `get_place_recommendation` | 상황별 장소 추천 | 혼자/친구/데이트/가족 맞춤 |
 | `get_smart_course` | 날씨 기반 코스 | 비 오면 실내, 맑으면 야외 자동 |
 
+### 스마트 분석 Tool (2개) - v3.7 NEW!
+| Tool | 설명 | 차별화 포인트 |
+|------|------|--------------|
+| `get_best_time_for_activity` | 최적 시간대 분석 | "언제 나가면 좋을까?" 시간별 점수 |
+| `compare_activities` | 활동 비교 | "캠핑 vs 피크닉" 승자 결정 |
+
 ---
 
 ## **지원 지역: 80개+**

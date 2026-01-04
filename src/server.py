@@ -1,8 +1,13 @@
 """
-Weather Life MCP 서버 v3.6
+Weather Life MCP 서버 v3.7
 날씨 + 미세먼지 + 생활 도우미 + 한국 특화 + 건강 + 지도 MCP
 
 PlayMCP 공모전 (MCP Player 10) 출품작
+
+v3.7 신규 기능 (스마트 분석):
+- 최적 시간대 분석 (get_best_time_for_activity) - "언제 나가면 좋을까?"
+- 활동 비교 (compare_activities) - "캠핑 vs 피크닉" 승자 결정
+- 28개 → 30개 도구로 확장
 
 v3.6 신규 기능 (실용성 기반 최적화):
 - 저사용 도구 제거로 32개 → 28개 최적화
