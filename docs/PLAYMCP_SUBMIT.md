@@ -36,7 +36,7 @@ weatherlife
 ▶ 감기위험/편두통/관절통/수면/알레르기
 
 [어디서든 사용] Claude, ChatGPT, Gemini 등 모든 AI에서 동작
-[안정성] 표준 MCP 프로토콜 | 3사 API 연동 | 28개 도구 | 24시간 무중단
+[안정성] 표준 MCP 프로토콜 | 3사 API 연동 | 30개 도구 | 24시간 무중단
 ```
 
 ---
@@ -103,15 +103,15 @@ https://web-production-19a3b.up.railway.app/mcp
 |------|-----|
 | 이름 | Weather Life |
 | 식별자 | weatherlife |
-| 버전 | 3.6.0 |
-| 도구 수 | 28개 |
+| 버전 | 3.7.0 |
+| 도구 수 | 30개 |
 | 지역 지원 | 전국 (동적 Geocoding) |
 | 인증 | 없음 |
 | Endpoint | https://web-production-19a3b.up.railway.app/mcp |
 
 ---
 
-## v3.6.0 주요 기능
+## v3.7.0 주요 기능
 
 ### 스마트 코스 (1개)
 - `get_smart_course` - 날씨 연동 A→B→C 코스 추천 (장소 간 실제 거리 계산)
@@ -297,7 +297,7 @@ playmcp.kakao.com/mcp/[등록 후 생성되는 ID]
 
 | 비교 항목 | Weather Life | Travel-Mate |
 |----------|--------------|-------------|
-| Tools 수 | **28개** | 4개 |
+| Tools 수 | **30개** | 4개 |
 | 날씨 연동 | **O** | X |
 | 카카오맵 연동 | **O** | ? |
 | 사용 빈도 | **매일** | 여행시만 |
@@ -348,5 +348,5 @@ playmcp.kakao.com/mcp/[등록 후 생성되는 ID]
 
 ---
 
-*Weather Life v3.6.0 - PlayMCP 공모전 (MCP Player 10) 출품용*
+*Weather Life v3.7.0 - PlayMCP 공모전 (MCP Player 10) 출품용*
 *경쟁자 분석: 2025.12.29*

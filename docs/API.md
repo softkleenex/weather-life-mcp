@@ -1,4 +1,4 @@
-# Weather Life MCP API 명세 v3.0.0
+# Weather Life MCP API 명세 v3.7.0
 
 ## 개요
 
@@ -10,7 +10,7 @@ Weather Life MCP는 날씨, 미세먼지, 옷차림 추천 + **한국 특화 생
 | Endpoint | `https://web-production-19a3b.up.railway.app/mcp` |
 | Protocol | MCP (Model Context Protocol) |
 | Framework | FastMCP 2.14.1 |
-| Version | 3.0.0 |
+| Version | 3.7.0 |
 
 ---
 
@@ -50,7 +50,7 @@ curl -X POST https://web-production-19a3b.up.railway.app/mcp \
 
 ---
 
-## Tools (28개)
+## Tools (30개)
 
 ### 기본 Tool (5개)
 
@@ -874,6 +874,108 @@ curl -X POST https://web-production-19a3b.up.railway.app/mcp \
 **Response:**
 
 비 오면 실내 위주, 맑으면 야외 포함으로 자동 구성된 3단계 코스를 추천합니다.
+
+---
+
+### v3.7 스마트 분석 Tool (2개) - NEW!
+
+#### 29. get_best_time_for_activity
+
+오늘 하루 중 활동하기 가장 좋은 시간대를 분석합니다!
+
+**Parameters:**
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+|------|------|------|--------|------|
+| location | string | N | "서울" | 지역명 |
+| activity | string | N | "외출" | 활동 종류 (외출/운동/빨래/등산/피크닉) |
+
+**Response:**
+
+```json
+{
+  "location": "서울",
+  "activity": "외출",
+  "best_time": {
+    "time": "14:00",
+    "score": 85,
+    "weather": "8°C, 맑음",
+    "recommendation": "14:00이 가장 좋아요! (85점)"
+  },
+  "best_period": {
+    "period": "오후",
+    "avg_score": 78,
+    "recommendation": "오후가 전반적으로 좋아요 (평균 78점)"
+  },
+  "avoid_time": {
+    "time": "06:00",
+    "score": 45,
+    "reason": "06:00은 피하세요 (45점)"
+  },
+  "hourly_analysis": [
+    {"time": "09:00", "score": 72, "grade": "좋음", "weather": "3°C, 맑음"},
+    {"time": "12:00", "score": 80, "grade": "최적", "weather": "6°C, 맑음"}
+  ],
+  "data_source": {
+    "provider": "기상청 단기예보 API",
+    "updated_at": "2026-01-04 12:00"
+  }
+}
+```
+
+**사용 예시:**
+- "오늘 언제 산책하면 좋을까?"
+- "빨래 몇 시에 널면 좋아?"
+- "저녁에 나가는 게 나을까, 아침이 나을까?"
+
+---
+
+#### 30. compare_activities
+
+두 활동 중 오늘 날씨에 더 적합한 것을 비교 분석합니다!
+
+**Parameters:**
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+|------|------|------|--------|------|
+| location | string | N | "서울" | 지역명 |
+| activity1 | string | N | "캠핑" | 첫 번째 활동 |
+| activity2 | string | N | "피크닉" | 두 번째 활동 |
+
+**지원 활동:** 캠핑, 피크닉, 등산, 빨래, 세차, 운동, 러닝, 골프, 낚시
+
+**Response:**
+
+```json
+{
+  "location": "서울",
+  "comparison": {
+    "캠핑": {
+      "score": 75,
+      "grade": "좋음",
+      "message": "캠핑하기 좋은 날씨!"
+    },
+    "피크닉": {
+      "score": 82,
+      "grade": "최적",
+      "message": "피크닉 완벽한 날!"
+    }
+  },
+  "winner": "피크닉",
+  "score_difference": 7,
+  "recommendation": "오늘은 피크닉가 7점 더 좋아요!",
+  "weather_summary": "현재 15°C, 강수확률 10%",
+  "data_source": {
+    "provider": "기상청 단기예보 API",
+    "updated_at": "2026-01-04 12:00"
+  }
+}
+```
+
+**사용 예시:**
+- "캠핑 vs 피크닉, 오늘 뭐가 나을까?"
+- "등산이랑 러닝 중에 뭐가 좋아?"
+- "세차할까 빨래할까?"
 
 ---
 

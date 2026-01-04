@@ -1,4 +1,4 @@
-# PlayMCP 등록 정보 v3.0
+# PlayMCP 등록 정보 v3.7
 
 > Weather Life MCP 서버 등록용 정보 (MCP Player 10 공모전)
 
@@ -36,7 +36,7 @@ weatherlife
 ▶ 감기위험/편두통/관절통/수면/알레르기
 
 [어디서든 사용] Claude, ChatGPT, Gemini 등 모든 AI에서 동작
-[안정성] 표준 MCP 프로토콜 | 3사 API 연동 | 28개 도구 | 24시간 무중단
+[안정성] 표준 MCP 프로토콜 | 3사 API 연동 | 30개 도구 | 24시간 무중단
 ```
 
 ---
@@ -120,7 +120,7 @@ Streamable HTTP (Stateless)
 
 ---
 
-## 도구 정보 (28개)
+## 도구 정보 (30개)
 
 ### 장소 검색 도구 (6개) - v3.0 NEW!
 | Tool | 설명 | 차별화 포인트 |

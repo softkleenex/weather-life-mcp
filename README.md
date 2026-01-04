@@ -1,4 +1,4 @@
-# Weather Life MCP v3.0
+# Weather Life MCP v3.7
 
 <div align="center">
 
@@ -183,7 +183,7 @@ https://web-production-19a3b.up.railway.app/mcp
 
 ---
 
-## **28개 Tool**
+## **30개 Tool**
 
 ### 기본 Tool (5개)
 | Tool | 설명 | 예시 질문 |
@@ -262,7 +262,7 @@ https://web-production-19a3b.up.railway.app/mcp
 
 ### 편의성 (100점)
 - 자연어로 간단하게 질문 가능
-- **28개 Tool**로 다양한 상황 대응
+- **30개 Tool**로 다양한 상황 대응
 - **Kakao Maps 연동**으로 장소 검색까지
 - 80개+ 지역 지원
 - 한국어 응답
@@ -292,7 +292,7 @@ https://web-production-19a3b.up.railway.app/mcp
 ```
 weather-life-mcp/
 ├── src/
-│   ├── server.py              # MCP 서버 (16개 Tool)
+│   ├── server.py              # MCP 서버 (30개 Tool)
 │   ├── weather_api.py         # 기상청 날씨 API
 │   ├── air_quality_api.py     # 에어코리아 미세먼지 API
 │   ├── outfit_recommender.py  # 옷차림/외출 추천
@@ -353,6 +353,13 @@ python src/server.py
 
 ## **버전 히스토리**
 
+### v3.7.0 (2026-01-04)
+- **최적 시간대 추천** (`get_best_time_for_activity`) - 오늘 중 언제가 최적인지 분석
+- **활동 비교** (`compare_activities`) - 두 활동 비교 (캠핑 vs 피크닉 등)
+- **점수 산출 기준** (`score_breakdown`) - 왜 그 점수가 나왔는지 상세 설명
+- **데이터 출처 표시** (`data_source`) - 기상청/에어코리아 API 출처 명시
+- Tool 30개로 확장
+
 ### v3.0.0 (2025-01-03)
 - **Kakao Maps 연동** - 장소 검색/길찾기/코스 추천
 - `search_nearby_places` - 주변 장소 검색
@@ -361,8 +368,6 @@ python src/server.py
 - `get_place_recommendation` - 상황별 장소 추천
 - `get_smart_course` - 날씨 기반 코스 자동 생성
 - `get_recommended_spots` - 활동별 추천 장소
-- Tool 28개 (구조 개편)
-- 일부 미사용 Tool 정리
 
 ### v2.4.0 (2024-12-29)
 - **편두통지수 추가** (`get_migraine_risk`)
